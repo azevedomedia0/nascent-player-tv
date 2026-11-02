@@ -1,0 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --tv-bg: #0c101c;
+    --tv-surface: rgba(22, 18, 36, 0.75);
+    --tv-surface-elevated: rgba(30, 24, 48, 0.85);
+    --tv-accent: #38bdf8;
+    --tv-accent-glow: rgba(56, 189, 248, 0.4);
+
+    /* Authentic logo iridescent color stops from app-logo.png */
+    --logo-cyan: #38bdf8;
+    --logo-purple: #818cf8;
+    --logo-magenta: #f472b6;
+    --logo-mint: #34d399;
+    --logo-gold: #fde047;
+  }
+
+  body {
+    background-color: #0c101c;
+    background-image: 
+      radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
+      radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
+      radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.28) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 70% at 92% 95%, rgba(253, 224, 71, 0.18) 0%, transparent 55%),
+      radial-gradient(ellipse 95% 85% at 50% 50%, rgba(168, 85, 247, 0.20) 0%, transparent 70%),
+      linear-gradient(135deg, #0b1120 0%, #170d24 25%, #220b1f 50%, #0a1e19 75%, #1c1c0a 100%);
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
+    color: #f1f5f9;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow-x: hidden;
+    overscroll-behavior: none;
+    min-height: 100vh;
+  }
+
+  /* Custom scrollbar for TV rails */
+  ::-webkit-scrollbar {
+    height: 4px;
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35);
+  }
+}
+
+.font-display {
+  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+}
+
+.font-time {
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-feature-settings: "tnum" 1, "cv01" 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* TV Focus ring effects */
+.tv-focus-glow {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.tv-focus-glow:focus-visible,
+.tv-focus-glow[data-focused="true"],
+.tv-focus-glow:hover {
+  transform: scale(1.04);
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.8), 0 0 28px 2px rgba(56, 189, 248, 0.45);
+  border-color: #ffffff !important;
+  z-index: 20;
+}
+
+/* Hide scrollbar for leanback rows */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* TvTopNav floats clear over content — no painted background layer */
+header[data-tab] {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Authentic app logo gradient for search tab background */
+div#root:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)[data-search-modal="true"],
+[data-search-modal="true"] {
+  background-color: #0c101c !important;
+  background-image: 
+    radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
+    radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 70% at 92% 95%, rgba(253, 224, 71, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 95% 85% at 50% 50%, rgba(168, 85, 247, 0.20) 0%, transparent 70%),
+    linear-gradient(135deg, #0b1120 0%, #170d24 25%, #220b1f 50%, #0a1e19 75%, #1c1c0a 100%) !important;
+  background-attachment: fixed !important;
+  background-size: cover !important;
+  background-repeat: no-repeat !important;
+}
+

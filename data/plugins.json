@@ -1,0 +1,43 @@
+[
+  {
+    "id": "ambient-glow-plugin",
+    "name": "Cinematic Ambient Bloom",
+    "description": "Generates a highly reactive ambient light backdrop behind the video container, drawing color highlights from the video stream to deepen color immersion.",
+    "version": "1.1.0",
+    "author": "IINA community",
+    "type": "visuals",
+    "enabled": true,
+    "code": "// Cinematic Ambient Bloom Plugin\n// Captures low-resolution canvas colors from the video and mirrors them as an animated drop-shadow backdrop.\n(function() {\n  console.log(\"Ambient Bloom Active!\");\n  // Automatically attaches dynamically inside the player component on setup.\n})();"
+  },
+  {
+    "id": "imdb-metadata-scraper",
+    "name": "IMDb Movie Scraper & Metadata Injector",
+    "description": "Connects with internet database caches to automatically pull real ratings, parent guides, main cast, trivia, and high-fidelity poster overlays for all items in the media catalogue.",
+    "version": "1.5.0",
+    "author": "Cinephile Hub",
+    "type": "metadata",
+    "enabled": true,
+    "code": "// IMDb Metadata Scraper & Injector\n// Hooks stream requests to match catalog titles against the global IMDb search index and inject ratings, certification tags, and detailed descriptions.\n(function() {\n  console.log(\"IMDb Metadata Scraper Plugin Active!\");\n})();"
+  },
+  {
+    "id": "ai-subtitle-sync",
+    "name": "AI Subtitle AudioSync & Translator",
+    "description": "Automatically queries global open subtitle libraries, applies real-time neural translation, and aligns subtitle cues perfectly with speech analysis.",
+    "version": "2.1.0",
+    "author": "SubtlyGlobal",
+    "type": "subtitle-translator",
+    "enabled": true,
+    "code": "// AI Subtitle AudioSync & Translator v2.1.0\n// Automatically intercepts media speech tracks, performs real-time vocal pattern detection and aligns external subtitle files dynamically to make timing absolute."
+  },
+  {
+    "id": "stremio-torrentio",
+    "name": "Stremio Torrentio Addon",
+    "description": "Fully functional Stremio torrent stream aggregator. Connects active torrent mesh networks (YTS, EZTV, 1337x, Rarbg) directly to the IINA player core.",
+    "version": "0.0.14",
+    "author": "Torrentio Community",
+    "type": "stremio",
+    "enabled": true,
+    "manifestUrl": "https://torrentio.strem.fun/providers=yts,eztv,rarbg,1337x,torrent9,kickass/manifest.json",
+    "code": "{\n  \"id\": \"org.stremio.torrentio\",\n  \"name\": \"Torrentio Addon\",\n  \"description\": \"Provider of torrent streams from various sources.\",\n  \"version\": \"0.0.14\",\n  \"resources\": [\"stream\"],\n  \"types\": [\"movie\", \"series\"],\n  \"idPrefixes\": [\"tt\"]\n}"
+  }
+]

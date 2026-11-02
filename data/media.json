@@ -1,0 +1,98 @@
+[
+  {
+    "id": "bbb-sample",
+    "title": "Big Buck Bunny (Sleek Stream)",
+    "filename": "BigBuckBunny.mp4",
+    "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "type": "movie",
+    "duration": 596,
+    "posterUrl": "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_Buck_Bunny_堅毅的大兔子.jpg",
+    "bannerUrl": "https://peach.blender.org/wp-content/themes/peach/images/header_left.jpg",
+    "releaseYear": "2008",
+    "genres": [
+      "Comedy",
+      "Animation",
+      "Family"
+    ],
+    "summary": "A large and lovable rabbit, Big Buck Bunny, sets out to retaliate against three bullying rodents who ruin his peaceful day and harass his forest friends.",
+    "director": "Sacha Goedegeboure",
+    "rating": 7.8,
+    "playCount": 12,
+    "playProgress": 0,
+    "isLocal": false,
+    "subtitles": [
+      {
+        "id": "sub-1-en",
+        "label": "English",
+        "language": "en",
+        "url": "/api/subtitles/bbb/en"
+      },
+      {
+        "id": "sub-1-es",
+        "label": "Spanish (Español)",
+        "language": "es",
+        "url": "/api/subtitles/bbb/es"
+      }
+    ]
+  },
+  {
+    "id": "sintel-sample",
+    "title": "Sintel (Cinematic Journey)",
+    "filename": "Sintel.mp4",
+    "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+    "type": "movie",
+    "duration": 888,
+    "posterUrl": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg",
+    "bannerUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1200&auto=format&fit=crop",
+    "releaseYear": "2010",
+    "genres": [
+      "Fantasy",
+      "Animation",
+      "Adventure"
+    ],
+    "summary": "In a breathtaking fantasy world, Sintel, a lonely young woman, rescues a baby dragon and names him Scales. When a gargantuan dragon captures Scales, Sintel embarks on a harsh and dangerous quest to find him.",
+    "director": "Colin Levy",
+    "rating": 8.2,
+    "playCount": 5,
+    "playProgress": 0,
+    "isLocal": false,
+    "subtitles": [
+      {
+        "id": "sub-2-en",
+        "label": "English",
+        "language": "en",
+        "url": "/api/subtitles/sintel/en"
+      }
+    ]
+  },
+  {
+    "id": "tears-sample",
+    "title": "Tears of Steel (Sci-Fi Experience)",
+    "filename": "TearsOfSteel.mp4",
+    "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    "type": "movie",
+    "duration": 734,
+    "posterUrl": "https://upload.wikimedia.org/wikipedia/commons/e/e0/Tears_of_steel_poster.jpg",
+    "bannerUrl": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?q=80&w=1200&auto=format&fit=crop",
+    "releaseYear": "2012",
+    "genres": [
+      "Sci-Fi",
+      "Action",
+      "Cyberpunk"
+    ],
+    "summary": "Set in a dystopian future Amsterdam, a group of scientists turn a giant observatory into a defense weapon to defeat hyper-intelligent mechanical giants, while rekindling an old futuristic romance.",
+    "director": "Ian Hubert",
+    "rating": 7.9,
+    "playCount": 8,
+    "playProgress": 0,
+    "isLocal": false,
+    "subtitles": [
+      {
+        "id": "sub-3-en",
+        "label": "English",
+        "language": "en",
+        "url": "/api/subtitles/tears/en"
+      }
+    ]
+  }
+]
