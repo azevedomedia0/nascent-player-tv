@@ -509,7 +509,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
             {(() => {
               const incomingPeerRequests = peerRequests.filter((r) => r.direction === 'incoming').length;
               return [
-              { id: 'profile', label: 'Profile & Account', icon: User, badge: currentProfile.initials },
+              { id: 'profile', label: 'Profile & Account', icon: User },
               { id: 'audio-video', label: 'Display & Sound', icon: Sliders },
               { id: 'subtitles', label: 'Subtitles & Audio', icon: Languages },
               { id: 'storage', label: 'Devices & Drives', icon: HardDrive },
@@ -548,11 +548,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {cat.locked && (
                       <Lock className={`w-3.5 h-3.5 ${isActive ? 'text-black/70' : 'text-amber-400'}`} />
-                    )}
-                    {cat.badge && (
-                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-sky-400'}`}>
-                        {cat.badge}
-                      </span>
                     )}
                     {typeof cat.count === 'number' && (
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-zinc-400'}`}>

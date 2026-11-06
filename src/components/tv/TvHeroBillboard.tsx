@@ -25,6 +25,8 @@ export interface FeaturedMovie {
   progress?: number;
   remainingTime?: string;
   streamUrl?: string;
+  /** Active P2P seeders (Top Seeding rails) */
+  seeders?: number;
 }
 
 export interface ContinueWatchingMediaItem extends FeaturedMovie {

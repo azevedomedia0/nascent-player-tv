@@ -11,6 +11,8 @@ interface TvContentRowProps {
   isTop10?: boolean;
   isRanked?: boolean;
   isContinueWatching?: boolean;
+  /** Show seeder counts under ranked cards (Top Seeding rail) */
+  showSeeders?: boolean;
   progressMap?: Record<string, number>; // item id -> percentage 0-100
   selectedItemId?: string;
   updatedDaily?: boolean;
@@ -26,6 +28,7 @@ export const TvContentRow: React.FC<TvContentRowProps> = ({
   isTop10 = false,
   isRanked = false,
   isContinueWatching = false,
+  showSeeders = false,
   progressMap = {},
   selectedItemId,
   updatedDaily = false,
@@ -124,11 +127,21 @@ export const TvContentRow: React.FC<TvContentRowProps> = ({
                       {item.title}
                     </h3>
                     <div className="text-[10px] lg:text-[11px] text-zinc-500 flex items-center gap-1.5 mt-0.5">
-                      <span className="text-sky-400 font-mono font-semibold">#{index + 1}</span>
+                      <span className={`font-mono font-semibold ${showSeeders ? 'text-emerald-400' : 'text-sky-400'}`}>
+                        #{index + 1}
+                      </span>
                       <span>·</span>
-                      <span>{item.releaseYear}</span>
-                      <span>·</span>
-                      <span>{item.genres?.[0] || 'Movie'}</span>
+                      {showSeeders && item.seeders != null ? (
+                        <span className="text-emerald-400/90 font-medium">
+                          {item.seeders.toLocaleString()} seeders
+                        </span>
+                      ) : (
+                        <>
+                          <span>{item.releaseYear}</span>
+                          <span>·</span>
+                          <span>{item.genres?.[0] || 'Movie'}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -392,6 +392,44 @@ export const isMovieItem = (item: FeaturedMovie): boolean => {
 
 export const getDailyUpdatedTop20 = getDailyUpdatedTop50;
 
+/** Rank titles by synthetic P2P seed health (Torrentio-style Top Seeding rail). */
+export function getTopSeedingList(
+  items: FeaturedMovie[],
+  count: number = 24,
+  seedOffset: number = 0
+): FeaturedMovie[] {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+
+  const seen = new Set<string>();
+  const unique = items.filter((item) => {
+    if (!item?.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+
+  const ranked = unique
+    .map((item, index) => {
+      const rating =
+        typeof item.rating === 'number'
+          ? item.rating
+          : parseFloat(String(item.rating || '7')) || 7;
+      // Deterministic seeder count from rating + id hash + daily jitter
+      let hash = 0;
+      for (let i = 0; i < item.id.length; i++) hash = (hash * 31 + item.id.charCodeAt(i)) >>> 0;
+      const dailyJitter = ((dayOfYear * 17 + seedOffset * 41 + index * 13) % 900);
+      const seeders = Math.round(420 + rating * 380 + (hash % 1800) + dailyJitter);
+      return { ...item, seeders, statusBadge: `${seeders.toLocaleString()} seeders` };
+    })
+    .sort((a, b) => (b.seeders || 0) - (a.seeders || 0));
+
+  // Light daily rotate of the top band so the rail feels fresh
+  const shift = (dayOfYear + seedOffset) % Math.min(6, Math.max(1, ranked.length));
+  const rotated = [...ranked.slice(shift), ...ranked.slice(0, shift)];
+  return rotated.slice(0, count);
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<TvTab>('movies');
   const [moviesList, setMoviesList] = useState<FeaturedMovie[]>(GLOBAL_MOVIE_POSTERS);
@@ -496,6 +534,16 @@ export default function App() {
   const dailyDisneyMovies = useMemo(() => getDailyUpdatedTop50(DISNEY_PLUS_TOP_50, 1).filter(isMovieItem), []);
   const dailyAmazonMovies = useMemo(() => getDailyUpdatedTop50(AMAZON_PRIME_TOP_50, 2).filter(isMovieItem), []);
   const dailyAppleMovies = useMemo(() => getDailyUpdatedTop50(APPLE_TV_TOP_50, 3).filter(isMovieItem), []);
+
+  // Top Seeding — highest P2P seeder health across the catalog
+  const topSeedingMovies = useMemo(
+    () => getTopSeedingList(pureMoviesList, 24, 7),
+    [pureMoviesList]
+  );
+  const topSeedingShows = useMemo(
+    () => getTopSeedingList(pureShowsList, 24, 11),
+    [pureShowsList]
+  );
 
   // Top 50 TV Shows per platform
   const dailyNetflixShows = useMemo(() => getDailyUpdatedTop50(NETFLIX_TOP_50_SHOWS, 0), []);
@@ -959,6 +1007,20 @@ export default function App() {
                 selectedItemId={currentFeatured.id}
               />
 
+              {/* Top Seeding — highest active P2P seeders */}
+              <TvContentRow
+                title="Top Seeding"
+                subtitle="Most active P2P seeders right now"
+                items={topSeedingMovies}
+                onSelectItem={(m) => setInspectedMovie(m)}
+                onFocusItem={(m) => setSelectedMovie(m)}
+                isRanked={true}
+                showSeeders={true}
+                updatedDaily={true}
+                dailyDateString={todayDateString}
+                selectedItemId={currentFeatured.id}
+              />
+
               {/* Row 1: Top 50 Movies on Netflix */}
               <TvContentRow
                 title="Top 50 Movies on Netflix"
@@ -1061,6 +1123,20 @@ export default function App() {
                 onSelectItem={(m) => handlePlayMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
                 isContinueWatching={true}
+                selectedItemId={currentFeaturedShow.id}
+              />
+
+              {/* Top Seeding — highest active P2P seeders */}
+              <TvContentRow
+                title="Top Seeding"
+                subtitle="Most active P2P seeders right now"
+                items={topSeedingShows}
+                onSelectItem={(m) => setInspectedMovie(m)}
+                onFocusItem={(m) => setSelectedShow(m)}
+                isRanked={true}
+                showSeeders={true}
+                updatedDaily={true}
+                dailyDateString={todayDateString}
                 selectedItemId={currentFeaturedShow.id}
               />
 

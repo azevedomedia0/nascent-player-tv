@@ -73,10 +73,13 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
       .replace(/_UY\d+/i, '_UY1600')
       .replace(/_CR\d+,\d+,\d+,\d+/i, '');
 
-  // Season and Episode state
+  const showIsSeries = useMemo(() => isTvSeries(movie), [movie]);
+
+  // Season and Episode state (TV series only)
   const availableSeasons = useMemo(() => {
+    if (!showIsSeries) return [];
     return getAvailableSeasons(movie.id, movie.title);
-  }, [movie.id, movie.title]);
+  }, [movie.id, movie.title, showIsSeries]);
 
   const [selectedSeason, setSelectedSeason] = useState<number>(() => availableSeasons[0] || 1);
   const [viewMode, setViewMode] = useState<'episodes' | 'sources'>('episodes');
@@ -587,7 +590,8 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
             </button>
           </div>
 
-          {/* Season and Episode List Component */}
+          {/* Season and Episode List — TV series only */}
+          {showIsSeries && (
           <div className="my-4 p-5 rounded-3xl bg-white/[0.04] border border-white/10 backdrop-blur-md">
             {/* Header with Season Selector Tabs */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-white/10">
@@ -776,6 +780,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
               </div>
             )}
           </div>
+          )}
 
           {/* Synopsis */}
           <div className="my-3">
