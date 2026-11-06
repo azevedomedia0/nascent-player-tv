@@ -5,31 +5,22 @@ import {
   Check, 
   Download, 
   Trash2, 
-  Settings, 
-  ExternalLink, 
-  Activity, 
-  Terminal, 
-  BookOpen, 
   Plus, 
   RefreshCw, 
   Layers, 
   Sliders, 
-  Radio, 
-  Film, 
-  Subtitles, 
   Cpu, 
   Sparkles, 
-  AlertCircle, 
-  CheckCircle2,
-  Code2,
   Search,
-  Zap,
   Globe,
-  Lock
+  Lock,
+  Link2,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 import { globalPluginEngine } from '../../lib/plugins/pluginEngine';
 import { POPULAR_COMMUNITY_DIRECTORY } from '../../lib/plugins/defaultPlugins';
-import { InstalledAddon, AddonManifest } from '../../lib/plugins/types';
+import { InstalledAddon } from '../../lib/plugins/types';
 import { addonPaywall } from '../../lib/plugins/addonPaywall';
 import { TvAddonPaywallModal } from './TvAddonPaywallModal';
 
@@ -38,7 +29,7 @@ interface TvPluginModalProps {
   onClose: () => void;
 }
 
-type TabType = 'installed' | 'directory' | 'install' | 'sandbox' | 'docs';
+type TabType = 'installed' | 'directory' | 'add-url';
 
 export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<TabType>('installed');
@@ -52,24 +43,14 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
   const [isCommunityUnlocked, setIsCommunityUnlocked] = useState<boolean>(() => addonPaywall.isUnlocked());
 
   // Custom Install State
+  const [isInstalling, setIsInstalling] = useState(false);
   const [installUrl, setInstallUrl] = useState('');
   const [installError, setInstallError] = useState<string | null>(null);
   const [installSuccess, setInstallSuccess] = useState<string | null>(null);
-  const [isInstalling, setIsInstalling] = useState(false);
   
   // Settings Editor State
   const [configuringAddon, setConfiguringAddon] = useState<InstalledAddon | null>(null);
   const [tempSettings, setTempSettings] = useState<Record<string, any>>({});
-
-  // Developer Sandbox State
-  const [sandboxSelectedAddonId, setSandboxSelectedAddonId] = useState<string>('');
-  const [sandboxResource, setSandboxResource] = useState<'stream' | 'meta' | 'catalog' | 'subtitles'>('stream');
-  const [sandboxType, setSandboxType] = useState<'movie' | 'series'>('movie');
-  const [sandboxId, setSandboxId] = useState<string>('tt1375666'); // Inception
-  const [sandboxCatalogId, setSandboxCatalogId] = useState<string>('top');
-  const [sandboxResponse, setSandboxResponse] = useState<string | null>(null);
-  const [sandboxLatency, setSandboxLatency] = useState<number | null>(null);
-  const [isSandboxLoading, setIsSandboxLoading] = useState(false);
 
   // Sync with AddonPaywall
   useEffect(() => {
@@ -83,16 +64,12 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
   // Sync with PluginEngine
   useEffect(() => {
     const update = () => {
-      const list = globalPluginEngine.getInstalledAddons();
-      setAddons(list);
-      if (!sandboxSelectedAddonId && list.length > 0) {
-        setSandboxSelectedAddonId(list[0].manifest.id);
-      }
+      setAddons(globalPluginEngine.getInstalledAddons());
     };
     update();
     const unsubscribe = globalPluginEngine.subscribe(update);
     return () => unsubscribe();
-  }, [sandboxSelectedAddonId]);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -118,17 +95,13 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
     globalPluginEngine.uninstallAddon(id);
   };
 
-  const handleHealthCheck = async (id: string) => {
-    await globalPluginEngine.checkHealth(id);
-  };
-
   const handleInstallFromUrl = async (urlToInstall?: string, addonName?: string) => {
-    const targetUrl = urlToInstall || installUrl;
-    if (!targetUrl.trim()) return;
+    const targetUrl = (urlToInstall ?? installUrl).trim();
+    if (!targetUrl) return;
 
     // Check Paywall status
     if (!isCommunityUnlocked) {
-      setPaywallTargetAddon(addonName || (urlToInstall ? 'Community Addon' : 'Custom Manifest'));
+      setPaywallTargetAddon(addonName || (urlToInstall ? 'Community Addon' : 'Custom Manifest URL'));
       setIsPaywallOpen(true);
       return;
     }
@@ -139,12 +112,12 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
 
     try {
       const installed = await globalPluginEngine.installFromUrl(targetUrl);
-      setInstallSuccess(`Successfully installed "${installed.manifest.name}" (v${installed.manifest.version})!`);
+      setInstallSuccess(`Installed "${installed.manifest.name}" (v${installed.manifest.version})`);
       setInstallUrl('');
       setTimeout(() => {
         setActiveTab('installed');
         setInstallSuccess(null);
-      }, 1200);
+      }, 1000);
     } catch (err: any) {
       setInstallError(err.message || 'Failed to install addon');
     } finally {
@@ -161,38 +134,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
     if (configuringAddon) {
       globalPluginEngine.updateAddonSettings(configuringAddon.manifest.id, tempSettings);
       setConfiguringAddon(null);
-    }
-  };
-
-  const handleRunSandboxQuery = async () => {
-    setIsSandboxLoading(true);
-    setSandboxResponse(null);
-    setSandboxLatency(null);
-    const start = performance.now();
-
-    try {
-      if (sandboxResource === 'stream') {
-        const streams = await globalPluginEngine.queryStreams(sandboxType, sandboxId);
-        setSandboxLatency(Math.round(performance.now() - start));
-        setSandboxResponse(JSON.stringify({ streams }, null, 2));
-      } else if (sandboxResource === 'meta') {
-        const meta = await globalPluginEngine.queryMeta(sandboxType, sandboxId);
-        setSandboxLatency(Math.round(performance.now() - start));
-        setSandboxResponse(JSON.stringify({ meta }, null, 2));
-      } else if (sandboxResource === 'catalog') {
-        const metas = await globalPluginEngine.queryCatalog(sandboxType, sandboxCatalogId);
-        setSandboxLatency(Math.round(performance.now() - start));
-        setSandboxResponse(JSON.stringify({ metas }, null, 2));
-      } else if (sandboxResource === 'subtitles') {
-        const subtitles = await globalPluginEngine.querySubtitles(sandboxType, sandboxId);
-        setSandboxLatency(Math.round(performance.now() - start));
-        setSandboxResponse(JSON.stringify({ subtitles }, null, 2));
-      }
-    } catch (err: any) {
-      setSandboxLatency(Math.round(performance.now() - start));
-      setSandboxResponse(JSON.stringify({ error: err.message }, null, 2));
-    } finally {
-      setIsSandboxLoading(false);
     }
   };
 
@@ -213,15 +154,18 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
         {/* HEADER */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#141414]">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500/20 to-sky-500/20 border border-indigo-500/30 text-indigo-400">
-              <Puzzle className="w-6 h-6" />
+            <div
+              className="p-2.5 rounded-xl border border-[#1b1b1b]/40 text-[#1b1b1b] shadow-lg shadow-fuchsia-500/25"
+              style={{
+                backgroundImage:
+                  'linear-gradient(135deg, var(--logo-magenta) 0%, var(--logo-purple) 28%, var(--logo-cyan) 55%, var(--logo-mint) 78%, var(--logo-gold) 100%)',
+              }}
+            >
+              <Puzzle className="w-6 h-6 drop-shadow-sm" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold tracking-tight text-white">Community Plugins & Addons</h2>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  Stremio Protocol v3
-                </span>
               </div>
               <p className="text-xs text-white/50">
                 {addons.length} Installed • {activeCount} Active • Modular media formats, stream scrapers, and player hooks
@@ -248,9 +192,13 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                   setPaywallTargetAddon(undefined);
                   setIsPaywallOpen(true);
                 }}
-                className="px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-95 text-white shadow-md shadow-pink-500/20 flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1 rounded-full text-xs font-bold text-[#1b1b1b] shadow-md shadow-fuchsia-500/25 hover:opacity-95 flex items-center gap-1.5 cursor-pointer border border-[#1b1b1b]/30"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(135deg, var(--logo-magenta) 0%, var(--logo-purple) 28%, var(--logo-cyan) 55%, var(--logo-mint) 78%, var(--logo-gold) 100%)',
+                }}
               >
-                <Lock className="w-3.5 h-3.5 text-amber-300" />
+                <Lock className="w-3.5 h-3.5 text-[#1b1b1b] drop-shadow-sm" />
                 <span>Get VIP Pass</span>
               </button>
             )}
@@ -312,42 +260,18 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
           </button>
 
           <button
-            onClick={() => setActiveTab('install')}
+            onClick={() => setActiveTab('add-url')}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition ${
-              activeTab === 'install'
+              activeTab === 'add-url'
                 ? 'border-indigo-500 text-white font-semibold'
                 : 'border-transparent text-white/60 hover:text-white'
             }`}
           >
-            <Plus className="w-4 h-4" />
-            Install from URL / JSON
+            <Link2 className="w-4 h-4" />
+            Add by Addon URL
             {!isCommunityUnlocked && (
               <Lock className="w-3 h-3 text-amber-400" />
             )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('sandbox')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition ${
-              activeTab === 'sandbox'
-                ? 'border-indigo-500 text-white font-semibold'
-                : 'border-transparent text-white/60 hover:text-white'
-            }`}
-          >
-            <Terminal className="w-4 h-4" />
-            Developer Sandbox
-          </button>
-
-          <button
-            onClick={() => setActiveTab('docs')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition ${
-              activeTab === 'docs'
-                ? 'border-indigo-500 text-white font-semibold'
-                : 'border-transparent text-white/60 hover:text-white'
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            API Protocol & Docs
           </button>
         </div>
 
@@ -362,11 +286,11 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                   Manage active resources, custom decoders, and stream scrapers.
                 </p>
                 <button
-                  onClick={() => setActiveTab('install')}
+                  onClick={() => setActiveTab('directory')}
                   className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Install Addon
+                  Browse Directory
                 </button>
               </div>
 
@@ -382,130 +306,105 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                   {addons.map((addon) => {
                     const isConfigurable = addon.manifest.configurable?.settings?.length;
+
                     return (
                       <div
                         key={addon.manifest.id}
-                        className={`p-4 rounded-xl border transition-all ${
+                        className={`group relative flex flex-col overflow-hidden rounded-2xl border transition-all hover:border-white/30 hover:shadow-lg hover:shadow-black/40 hover:-translate-y-0.5 ${
                           addon.enabled
-                            ? 'bg-[#1f1f1f] border-white/15 shadow-sm'
-                            : 'bg-[#181818] border-white/5 opacity-60'
+                            ? 'bg-[#1f1f1f] border-white/15'
+                            : 'bg-[#181818] border-white/5 opacity-70'
                         }`}
                       >
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="flex items-start gap-3.5">
-                            {addon.manifest.icon ? (
-                              <img
-                                src={addon.manifest.icon}
-                                alt={addon.manifest.name}
-                                className="w-12 h-12 rounded-xl object-cover bg-black/40 border border-white/10 flex-shrink-0"
-                                onError={(e) => {
-                                  // Fallback icon on image load error
-                                  (e.target as HTMLElement).style.display = 'none';
-                                }}
-                              />
-                            ) : (
-                              <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 text-indigo-400">
-                                <Puzzle className="w-6 h-6" />
-                              </div>
-                            )}
-
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="font-semibold text-white text-base">
-                                  {addon.manifest.name}
-                                </h3>
-                                <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-white/10 text-white/70">
-                                  v{addon.manifest.version}
-                                </span>
-                                {addon.isBuiltIn && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                                    Official
-                                  </span>
-                                )}
-                                {addon.manifest.formatDecoder && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                                    <Cpu className="w-3 h-3" />
-                                    Decoder
-                                  </span>
-                                )}
-                                {addon.manifest.playbackEnhancer && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                                    <Sparkles className="w-3 h-3" />
-                                    Enhancer
-                                  </span>
-                                )}
-                              </div>
-
-                              <p className="text-xs text-white/60 mt-1 line-clamp-2 max-w-2xl">
-                                {addon.manifest.description}
-                              </p>
-
-                              {/* Resources Badges */}
-                              <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                                <span className="text-[11px] text-white/40 mr-1">Resources:</span>
-                                {addon.manifest.resources.map((res, i) => {
-                                  const name = typeof res === 'string' ? res : res.name;
-                                  return (
-                                    <span
-                                      key={i}
-                                      className="px-2 py-0.5 rounded text-[10px] bg-white/5 border border-white/10 text-white/80 font-mono"
-                                    >
-                                      {name}
-                                    </span>
-                                  );
-                                })}
-
-                                {addon.latencyMs !== undefined && (
-                                  <span 
-                                    onClick={() => handleHealthCheck(addon.manifest.id)}
-                                    className="ml-2 flex items-center gap-1 text-[11px] text-emerald-400 cursor-pointer hover:underline"
-                                    title="Click to re-ping addon endpoint"
-                                  >
-                                    <Activity className="w-3 h-3" />
-                                    {addon.latencyMs}ms
-                                  </span>
-                                )}
-                              </div>
+                        {/* Photo-forward hero */}
+                        <div className="relative aspect-square w-full bg-zinc-900 overflow-hidden">
+                          {addon.manifest.icon ? (
+                            <img
+                              src={addon.manifest.icon}
+                              alt={addon.manifest.name}
+                              className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-indigo-600/40 via-purple-700/30 to-zinc-900 text-indigo-300">
+                              <Puzzle className="w-16 h-16 opacity-80" />
                             </div>
-                          </div>
+                          )}
 
-                          {/* ACTIONS */}
-                          <div className="flex items-center gap-2 self-end md:self-center">
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
+
+                          <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {isConfigurable && (
                               <button
                                 onClick={() => handleOpenConfigure(addon)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/20 text-white flex items-center gap-1.5 transition"
+                                className="p-1.5 rounded-lg bg-black/55 text-white/80 hover:text-white hover:bg-black/75 backdrop-blur-sm transition"
+                                title="Configure"
                               >
                                 <Sliders className="w-3.5 h-3.5" />
-                                Configure
                               </button>
                             )}
-
-                            {/* TOGGLE ENABLE/DISABLE */}
-                            <button
-                              onClick={() => handleToggle(addon.manifest.id)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
-                                addon.enabled
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
-                                  : 'bg-white/10 text-white/60 hover:text-white'
-                              }`}
-                            >
-                              <Check className={`w-3.5 h-3.5 ${addon.enabled ? 'opacity-100' : 'opacity-0'}`} />
-                              {addon.enabled ? 'Active' : 'Disabled'}
-                            </button>
-
-                            {/* UNINSTALL */}
                             <button
                               onClick={() => handleUninstall(addon.manifest.id)}
-                              className="p-2 rounded-lg text-white/40 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                              className="p-1.5 rounded-lg bg-black/55 text-white/70 hover:text-rose-300 hover:bg-rose-500/30 backdrop-blur-sm transition"
                               title="Uninstall Addon"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
+
+                          <div className="absolute top-2 left-2 flex flex-wrap gap-1 max-w-[70%]">
+                            {addon.isBuiltIn && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider bg-sky-500/90 text-black">
+                                Official
+                              </span>
+                            )}
+                            {addon.manifest.formatDecoder && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider bg-amber-400/90 text-black flex items-center gap-0.5">
+                                <Cpu className="w-2.5 h-2.5" />
+                                Decoder
+                              </span>
+                            )}
+                            {addon.manifest.playbackEnhancer && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider bg-purple-400/90 text-black flex items-center gap-0.5">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                Enhancer
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="absolute inset-x-0 bottom-0 p-3 pt-8">
+                            <h3 className="font-semibold text-white text-sm leading-snug line-clamp-2 drop-shadow-md">
+                              {addon.manifest.name}
+                            </h3>
+                            <span className="mt-1 inline-block text-[10px] font-mono text-white/55">
+                              v{addon.manifest.version}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-2.5">
+                          {addon.enabled ? (
+                            <button
+                              onClick={() => {
+                                if (isConfigurable) handleOpenConfigure(addon);
+                              }}
+                              className="w-full py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition bg-indigo-600 hover:bg-indigo-500 text-white"
+                            >
+                              Open App
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggle(addon.manifest.id)}
+                              className="w-full py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition bg-white/10 text-white/60 hover:text-white hover:bg-white/15"
+                            >
+                              Disabled
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -547,9 +446,13 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                       setPaywallTargetAddon(undefined);
                       setIsPaywallOpen(true);
                     }}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-400 via-pink-500 to-amber-300 hover:opacity-95 text-black font-extrabold text-xs shadow-lg shadow-pink-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl text-[#1b1b1b] font-extrabold text-xs shadow-lg shadow-fuchsia-500/25 hover:opacity-95 flex items-center gap-1.5 shrink-0 cursor-pointer border border-[#1b1b1b]/30"
+                    style={{
+                      backgroundImage:
+                        'linear-gradient(135deg, var(--logo-magenta) 0%, var(--logo-purple) 28%, var(--logo-cyan) 55%, var(--logo-mint) 78%, var(--logo-gold) 100%)',
+                    }}
                   >
-                    <Sparkles className="w-3.5 h-3.5 fill-black" />
+                    <Sparkles className="w-3.5 h-3.5 text-[#1b1b1b] drop-shadow-sm" />
                     <span>Unlock VIP Pass ($4.99/mo)</span>
                   </button>
                 </div>
@@ -664,17 +567,16 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
             </div>
           )}
 
-          {/* TAB 3: INSTALL CUSTOM ADDON */}
-          {activeTab === 'install' && (
+          {/* TAB 3: ADD BY ADDON URL */}
+          {activeTab === 'add-url' && (
             <div className="max-w-2xl mx-auto py-6 space-y-6">
               <div>
-                <h3 className="text-lg font-bold text-white">Install Custom Community Addon</h3>
+                <h3 className="text-lg font-bold text-white">Add by Addon URL</h3>
                 <p className="text-xs text-white/60 mt-1">
-                  Addons adhere to the Stremio v3 protocol. Enter any manifest URL or paste raw manifest JSON. Both <code className="text-indigo-400 font-mono">https://</code> and <code className="text-indigo-400 font-mono">stremio://</code> schemes are supported.
+                  Paste a manifest URL to install a community addon. Supports <code className="text-indigo-400 font-mono">https://</code> and <code className="text-indigo-400 font-mono">stremio://</code> links.
                 </p>
               </div>
 
-              {/* COMMUNITY PAYWALL NOTICE */}
               {!isCommunityUnlocked && (
                 <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-pink-500/15 to-purple-500/15 border border-pink-500/35 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
                   <div className="flex items-center gap-2.5">
@@ -682,8 +584,8 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                       <Lock className="w-4 h-4 text-amber-300" />
                     </div>
                     <div>
-                      <p className="font-bold text-white">Community VIP Pass Required for Custom URLs</p>
-                      <p className="text-zinc-300 text-[11px]">Install any 3rd-party Stremio addon, custom scraper, or private repository with VIP.</p>
+                      <p className="font-bold text-white">VIP Pass required for custom URLs</p>
+                      <p className="text-zinc-300 text-[11px]">Unlock to install any third-party addon manifest.</p>
                     </div>
                   </div>
                   <button
@@ -691,7 +593,11 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                       setPaywallTargetAddon('Custom Manifest URL');
                       setIsPaywallOpen(true);
                     }}
-                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-sky-400 via-pink-500 to-amber-300 text-black font-extrabold text-xs shadow shrink-0 cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl text-[#1b1b1b] font-extrabold text-xs shadow shrink-0 cursor-pointer border border-[#1b1b1b]/30"
+                    style={{
+                      backgroundImage:
+                        'linear-gradient(135deg, var(--logo-magenta) 0%, var(--logo-purple) 28%, var(--logo-cyan) 55%, var(--logo-mint) 78%, var(--logo-gold) 100%)',
+                    }}
                   >
                     Unlock VIP Pass
                   </button>
@@ -705,21 +611,21 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                     type="text"
                     value={installUrl}
                     onChange={(e) => setInstallUrl(e.target.value)}
-                    placeholder="e.g. https://torrentio.strem.fun/manifest.json or stremio://..."
+                    placeholder="https://example.com/manifest.json"
                     className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 font-mono"
                   />
                   {isCommunityUnlocked ? (
                     <button
                       onClick={() => handleInstallFromUrl()}
                       disabled={isInstalling || !installUrl.trim()}
-                      className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold flex items-center gap-2 transition"
+                      className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold flex items-center gap-2 transition shrink-0"
                     >
                       {isInstalling ? (
                         <RefreshCw className="w-4 h-4 animate-spin" />
                       ) : (
                         <Download className="w-4 h-4" />
                       )}
-                      Verify & Install
+                      Install
                     </button>
                   ) : (
                     <button
@@ -727,21 +633,24 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                         setPaywallTargetAddon('Custom Manifest URL');
                         setIsPaywallOpen(true);
                       }}
-                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-95 text-white text-sm font-bold flex items-center gap-2 transition shadow cursor-pointer shrink-0"
+                      className="px-5 py-2.5 rounded-xl text-[#1b1b1b] text-sm font-bold flex items-center gap-2 transition shadow-md hover:opacity-95 cursor-pointer shrink-0 border border-[#1b1b1b]/30"
+                      style={{
+                        backgroundImage:
+                          'linear-gradient(135deg, var(--logo-magenta) 0%, var(--logo-purple) 28%, var(--logo-cyan) 55%, var(--logo-mint) 78%, var(--logo-gold) 100%)',
+                      }}
                     >
-                      <Lock className="w-4 h-4 text-amber-300" />
+                      <Lock className="w-4 h-4" />
                       Unlock VIP
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* FEEDBACK ALERTS */}
               {installError && (
                 <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-semibold">Installation Failed:</span> {installError}
+                    <span className="font-semibold">Installation failed:</span> {installError}
                   </div>
                 </div>
               )}
@@ -754,222 +663,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                   </div>
                 </div>
               )}
-
-              {/* QUICK ONE-CLICK SAMPLES */}
-              <div className="pt-4 border-t border-white/10 space-y-2">
-                <span className="text-xs font-medium text-white/60">Try Popular Community Addons:</span>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { name: 'Cinemeta (Official)', url: 'https://v3-cinemeta.strem.io/manifest.json' },
-                    { name: 'Torrentio Streams', url: 'https://torrentio.strem.fun/manifest.json' },
-                    { name: 'OpenSubtitles v3', url: 'https://opensubtitles-v3.strem.io/manifest.json' },
-                    { name: 'Anime Kitsu', url: 'https://anime-kitsu.strem.fun/manifest.json' }
-                  ].map((preset) => (
-                    <button
-                      key={preset.url}
-                      onClick={() => setInstallUrl(preset.url)}
-                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-white/80 font-mono transition"
-                    >
-                      {preset.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: DEVELOPER SANDBOX */}
-          {activeTab === 'sandbox' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Terminal className="w-4 h-4 text-indigo-400" />
-                    Interactive Addon Endpoint Tester
-                  </h3>
-                  <p className="text-xs text-white/60 mt-0.5">
-                    Dispatch live protocol requests directly to installed addons and inspect responses in real time.
-                  </p>
-                </div>
-
-                {sandboxLatency !== null && (
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
-                    <Activity className="w-3.5 h-3.5" />
-                    RTT: {sandboxLatency} ms
-                  </div>
-                )}
-              </div>
-
-              {/* QUERY CONTROLS */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-[#1c1c1c] border border-white/10">
-                <div>
-                  <label className="text-[11px] text-white/50 block mb-1">Target Addon</label>
-                  <select
-                    value={sandboxSelectedAddonId}
-                    onChange={(e) => setSandboxSelectedAddonId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  >
-                    {addons.map(a => (
-                      <option key={a.manifest.id} value={a.manifest.id} className="bg-[#1f1f1f]">
-                        {a.manifest.name} ({a.manifest.id})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] text-white/50 block mb-1">Resource</label>
-                  <select
-                    value={sandboxResource}
-                    onChange={(e) => setSandboxResource(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
-                  >
-                    <option value="stream" className="bg-[#1f1f1f]">stream (/stream)</option>
-                    <option value="meta" className="bg-[#1f1f1f]">meta (/meta)</option>
-                    <option value="catalog" className="bg-[#1f1f1f]">catalog (/catalog)</option>
-                    <option value="subtitles" className="bg-[#1f1f1f]">subtitles (/subtitles)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] text-white/50 block mb-1">Media Type</label>
-                  <select
-                    value={sandboxType}
-                    onChange={(e) => setSandboxType(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
-                  >
-                    <option value="movie" className="bg-[#1f1f1f]">movie</option>
-                    <option value="series" className="bg-[#1f1f1f]">series</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] text-white/50 block mb-1">
-                    {sandboxResource === 'catalog' ? 'Catalog ID' : 'Media ID (e.g. IMDb tt...)'}
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    {sandboxResource === 'catalog' ? (
-                      <input
-                        type="text"
-                        value={sandboxCatalogId}
-                        onChange={(e) => setSandboxCatalogId(e.target.value)}
-                        placeholder="top"
-                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        value={sandboxId}
-                        onChange={(e) => setSandboxId(e.target.value)}
-                        placeholder="tt1375666"
-                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
-                      />
-                    )}
-                    <button
-                      onClick={handleRunSandboxQuery}
-                      disabled={isSandboxLoading}
-                      className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1 transition flex-shrink-0"
-                    >
-                      {isSandboxLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                      Test
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* RESPONSE JSON VIEWER */}
-              <div className="rounded-xl bg-[#111111] border border-white/10 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2.5 bg-[#171717] border-b border-white/10">
-                  <span className="text-xs font-mono text-white/60">
-                    GET /{sandboxResource}/{sandboxType}/{sandboxResource === 'catalog' ? sandboxCatalogId : sandboxId}.json
-                  </span>
-                  {sandboxResponse && (
-                    <span className="text-[11px] text-emerald-400 font-mono">200 OK</span>
-                  )}
-                </div>
-                <pre className="p-4 text-xs font-mono text-emerald-300 max-h-96 overflow-y-auto leading-relaxed scrollbar-thin">
-                  {sandboxResponse || '// Click "Test" above to inspect live output payload from the selected addon'}
-                </pre>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: API DOCUMENTATION */}
-          {activeTab === 'docs' && (
-            <div className="max-w-4xl space-y-6 text-sm text-white/80 leading-relaxed">
-              <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-200">
-                <h3 className="font-bold text-white text-base mb-1">Stremio Addon Protocol v3 Compatibility</h3>
-                <p className="text-xs">
-                  This media server implements the Stremio Addon Protocol. You can build plugins using the official <code className="font-mono text-white">stremio-addon-sdk</code>, plain Node.js / Express, Python FastAPI, or Go. All routes must return JSON with <code className="font-mono text-white">Access-Control-Allow-Origin: *</code>.
-                </p>
-              </div>
-
-              <div>
-                <h4 className="text-white font-semibold text-sm mb-2">1. Core Resource Endpoints</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
-                  <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
-                    <span className="text-indigo-400 font-bold">GET</span> /manifest.json
-                    <p className="text-[11px] text-white/50 font-sans mt-0.5">Returns addon identity, resources, catalogs, and behaviorHints.</p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
-                    <span className="text-indigo-400 font-bold">GET</span> /catalog/:type/:id.json
-                    <p className="text-[11px] text-white/50 font-sans mt-0.5">Returns media lists for browse & search views.</p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
-                    <span className="text-indigo-400 font-bold">GET</span> /meta/:type/:id.json
-                    <p className="text-[11px] text-white/50 font-sans mt-0.5">Provides full metadata, episodes, and cast lists.</p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
-                    <span className="text-indigo-400 font-bold">GET</span> /stream/:type/:id.json
-                    <p className="text-[11px] text-white/50 font-sans mt-0.5">Resolves playable HTTP, HLS, DASH, or BitTorrent streams.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-white font-semibold text-sm mb-2">2. Minimal Node.js / Express Example</h4>
-                <pre className="p-4 rounded-xl bg-[#111111] border border-white/10 font-mono text-xs text-sky-300 overflow-x-auto">
-{`const express = require('express');
-const cors = require('cors');
-const app = express();
-app.use(cors());
-
-const manifest = {
-  id: 'org.community.mystream',
-  name: 'My Community Streams',
-  version: '1.0.0',
-  description: 'Ultra-fast 4K stream resolver',
-  types: ['movie', 'series'],
-  resources: ['stream'],
-  idPrefixes: ['tt']
-};
-
-app.get('/manifest.json', (req, res) => res.json(manifest));
-
-app.get('/stream/:type/:id.json', (req, res) => {
-  const { id } = req.params;
-  res.json({
-    streams: [
-      {
-        name: 'Community 4K Master',
-        title: 'HEVC 10-bit • TrueHD 7.1 • 32 GB',
-        url: \`https://media.example.com/streams/\${id}/master.m3u8\`,
-        quality: '4K REMUX'
-      }
-    ]
-  });
-});
-
-app.listen(7000);`}
-                </pre>
-              </div>
-
-              <div>
-                <h4 className="text-white font-semibold text-sm mb-2">3. Full Specification Document</h4>
-                <p className="text-xs text-white/60">
-                  A complete, exhaustive technical reference including format decoder demuxers, WebCodecs hardware pipeline integration, and crowdsourced auto-skip hooks is saved in the workspace root at <code className="text-indigo-400 font-mono">PLUGIN_API.md</code>.
-                </p>
-              </div>
             </div>
           )}
         </div>

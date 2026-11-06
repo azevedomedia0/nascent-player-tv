@@ -209,7 +209,7 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
             title="Exit Player (Esc)"
           >
             <ArrowLeft className="w-5 h-5 text-sky-400" />
-            <span>Back to Google TV</span>
+            <span>Go Back</span>
           </button>
 
           <div className="flex flex-col">

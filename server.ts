@@ -542,6 +542,74 @@ app.post("/api/metadata/enrich", async (req, res) => {
 // Pulls live ratings, synopses, cast, certifications, and high-res art from IMDb & Cinemeta
 // ===========================================================================
 
+const actorHeadshotCache = new Map<string, string | null>();
+
+/** Resolve a live IMDb headshot for an actor/actress name via the suggestion API. */
+async function resolveActorHeadshot(name: string): Promise<string | null> {
+  const key = name.trim().toLowerCase();
+  if (!key) return null;
+  if (actorHeadshotCache.has(key)) return actorHeadshotCache.get(key) ?? null;
+
+  try {
+    const url = `https://v3.sg.media-imdb.com/suggestion/x/${encodeURIComponent(key)}.json`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+      },
+    });
+    if (!response.ok) {
+      actorHeadshotCache.set(key, null);
+      return null;
+    }
+
+    const data = await response.json();
+    const items = Array.isArray(data?.d) ? data.d : [];
+    const person =
+      items.find((item: any) =>
+        typeof item?.id === "string" &&
+        item.id.startsWith("nm") &&
+        String(item.l || "").toLowerCase() === key
+      ) ||
+      items.find((item: any) => typeof item?.id === "string" && item.id.startsWith("nm"));
+
+    let imageUrl: string | null = null;
+    if (person?.i?.imageUrl) {
+      imageUrl = person.i.imageUrl;
+    } else if (Array.isArray(person?.i) && typeof person.i[0] === "string") {
+      imageUrl = person.i[0];
+    }
+
+    // Prefer a square headshot crop so avatars fully fill circular frames
+    if (imageUrl && imageUrl.includes("media-amazon.com") && imageUrl.includes("._V1_")) {
+      imageUrl = imageUrl.replace(/\._V1_[^.]*/, "._V1_QL75_UX400_CR0,0,400,400_");
+    }
+
+    actorHeadshotCache.set(key, imageUrl);
+    return imageUrl;
+  } catch {
+    actorHeadshotCache.set(key, null);
+    return null;
+  }
+}
+
+async function resolveCastWithHeadshots(
+  cast: any[]
+): Promise<Array<{ name: string; character: string; role: string; photoUrl?: string }>> {
+  const names = (Array.isArray(cast) ? cast : []).slice(0, 16).map((c: any) => {
+    const name = typeof c === "string" ? c : c?.name || "Actor";
+    const character = typeof c === "object" ? c?.character || c?.role || "Starring" : "Starring";
+    return { name, character, role: character };
+  });
+
+  return Promise.all(
+    names.map(async (member) => {
+      const photoUrl = await resolveActorHeadshot(member.name);
+      return photoUrl ? { ...member, photoUrl } : member;
+    })
+  );
+}
+
 // Helper to search IMDb Suggestions API (v3 JSON)
 async function searchImdbInternal(query: string) {
   const cleanQ = query.trim().toLowerCase();
@@ -625,16 +693,7 @@ async function fetchImdbTitleMetadata(ttId: string, preferredType?: string) {
     runtime: meta.runtime || `${runtimeMins} min`,
     genres: Array.isArray(meta.genres) ? meta.genres : (Array.isArray(meta.genre) ? meta.genre : ["Drama"]),
     director: Array.isArray(meta.director) ? meta.director.join(", ") : (meta.director || "Director"),
-    cast: (Array.isArray(meta.cast) ? meta.cast : []).map((c: any) => {
-      const name = typeof c === 'string' ? c : (c.name || 'Actor');
-      const character = typeof c === 'object' ? (c.character || c.role || 'Starring') : 'Starring';
-      return {
-        name,
-        character,
-        role: character,
-        photoUrl: `https://images.metahub.space/cast/${encodeURIComponent(name)}`
-      };
-    }),
+    cast: await resolveCastWithHeadshots(Array.isArray(meta.cast) ? meta.cast : []),
     summary: meta.description || "A critically acclaimed production available in high-definition cinema streaming.",
     posterUrl: meta.poster || `https://images.metahub.space/poster/medium/${ttId}/img`,
     bannerUrl: meta.background || meta.poster || `https://images.metahub.space/background/medium/${ttId}/img`,
@@ -643,6 +702,42 @@ async function fetchImdbTitleMetadata(ttId: string, preferredType?: string) {
     trailers: meta.trailers || []
   };
 }
+
+// 0. Live IMDb actor headshot lookup (single or batch)
+app.get("/api/imdb/actor-image", async (req, res) => {
+  const name = (req.query.name as string || "").trim();
+  if (!name) {
+    return res.status(400).json({ error: "Missing actor name" });
+  }
+  try {
+    const photoUrl = await resolveActorHeadshot(name);
+    res.json({ name, photoUrl });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed resolving actor image" });
+  }
+});
+
+app.post("/api/imdb/cast-images", async (req, res) => {
+  const names: string[] = Array.isArray(req.body?.names)
+    ? req.body.names.map((n: any) => String(n || "").trim()).filter(Boolean)
+    : [];
+  if (names.length === 0) {
+    return res.status(400).json({ error: "Missing names array" });
+  }
+  try {
+    const unique = Array.from(new Set(names)).slice(0, 24);
+    const entries = await Promise.all(
+      unique.map(async (name) => [name, await resolveActorHeadshot(name)] as const)
+    );
+    const images: Record<string, string> = {};
+    for (const [name, photoUrl] of entries) {
+      if (photoUrl) images[name] = photoUrl;
+    }
+    res.json({ images });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed resolving cast images" });
+  }
+});
 
 // 1. Live IMDb Search endpoint
 app.get("/api/imdb/search", async (req, res) => {

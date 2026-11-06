@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   HardDrive, 
   Folder, 
@@ -14,7 +14,6 @@ import {
   LayoutGrid, 
   List, 
   Search, 
-  Plus, 
   Sparkles, 
   X, 
   ChevronRight, 
@@ -61,6 +60,12 @@ export interface PeerWatchPartyInvitation {
   syncQuality: string;
 }
 
+interface SelectedLibraryFolder {
+  id: string;
+  name: string;
+  path: string;
+}
+
 interface TvLibrariesViewProps {
   localMediaFiles: LocalMediaFileItem[];
   peerLibraries: SharedPeerLibrary[];
@@ -70,6 +75,8 @@ interface TvLibrariesViewProps {
   onOpenWatchParty?: (movie: FeaturedMovie) => void;
   selectedPeerId: string | null;
   onSelectPeer: (peerId: string | null) => void;
+  selectedFolder?: SelectedLibraryFolder | null;
+  onClearFolder?: () => void;
 }
 
 export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
@@ -81,6 +88,8 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
   onOpenWatchParty,
   selectedPeerId,
   onSelectPeer,
+  selectedFolder = null,
+  onClearFolder,
 }) => {
   // Navigation tabs within Libraries
   type LibraryTab = 'all' | 'longest' | 'masters' | 'played' | 'volumes' | 'network' | 'peers';
@@ -96,6 +105,21 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
 
   // Selected storage drive filter
   const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedFolder) {
+      setActiveLibraryTab('all');
+      setSelectedDriveId(null);
+    }
+  }, [selectedFolder?.id]);
+
+  useEffect(() => {
+    if (selectedPeerId) {
+      setActiveLibraryTab('peers');
+      setSelectedDriveId(null);
+      onClearFolder?.();
+    }
+  }, [selectedPeerId]);
 
   // Rescan state & feedback
   const [isScanning, setIsScanning] = useState(false);
@@ -219,6 +243,68 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
     streamUrl: file.streamUrl,
   });
 
+  /** Same action button language as the hero billboard */
+  const renderHeroStyleActions = (
+    movie: FeaturedMovie,
+    options?: { showWatchParty?: boolean; compact?: boolean }
+  ) => {
+    const showWatchParty = options?.showWatchParty !== false && !!onOpenWatchParty;
+    const compact = options?.compact;
+
+    return (
+      <div className={`flex items-center flex-wrap ${compact ? 'gap-2' : 'gap-3'}`}>
+        <button
+          type="button"
+          onClick={() => onPlayMovie(movie)}
+          className={`flex items-center gap-2 rounded-full bg-white hover:bg-zinc-200 text-black font-bold tracking-wide shadow-xl shadow-black/40 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-white active:scale-95 ${
+            compact ? 'gap-2 px-4 py-2 text-[11px]' : 'gap-2.5 px-5 sm:px-6 py-2.5 text-xs'
+          }`}
+        >
+          <Play className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-black text-black ml-0.5`} />
+          <span>Watch Now</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onStreamSelectorMovie(movie)}
+          className={`rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/40 active:scale-95 ${
+            compact ? 'w-9 h-9' : 'w-10 h-10'
+          }`}
+          title="Watch Trailer / Sources"
+          aria-label="Watch Trailer"
+        >
+          <Film className={compact ? 'w-4 h-4' : 'w-4 h-4'} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onInspectMovie(movie)}
+          className={`rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/40 active:scale-95 ${
+            compact ? 'w-9 h-9' : 'w-10 h-10'
+          }`}
+          title="View Details"
+          aria-label="View Details"
+        >
+          <Info className={compact ? 'w-4 h-4' : 'w-4 h-4'} />
+        </button>
+
+        {showWatchParty && (
+          <button
+            type="button"
+            onClick={() => onOpenWatchParty?.(movie)}
+            className={`flex items-center gap-2 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-medium transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/40 active:scale-95 ${
+              compact ? 'px-3.5 py-2 text-[11px]' : 'px-5 py-2.5 text-xs'
+            }`}
+            title="Start watch party"
+          >
+            <Users className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-white`} />
+            <span>Watch Party</span>
+          </button>
+        )}
+      </div>
+    );
+  };
+
   // Helper to parse duration string like "2h 46m", "10m 34s", etc.
   const parseDurationSeconds = (d: string): number => {
     let seconds = 0;
@@ -243,35 +329,49 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
     return localMediaFiles.slice(0, 3);
   }, [localMediaFiles]);
 
+  const isSearching = searchQuery.trim().length > 0;
+  const searchScopeIncludesLocal = activeLibraryTab !== 'peers';
+  const searchScopeIncludesPeers = activeLibraryTab === 'peers' || activeLibraryTab === 'all';
+
   // Filtered files according to search, drive, and active tab
   const filteredLocalFiles = useMemo(() => {
+    // While searching, always scan the full local library (not just the active sub-tab slice)
     let result =
-      activeLibraryTab === 'played'
+      isSearching || activeLibraryTab === 'all' || activeLibraryTab === 'masters'
+        ? localMediaFiles
+        : activeLibraryTab === 'played'
         ? recentlyPlayedFiles
         : activeLibraryTab === 'longest'
         ? longestFiles
         : localMediaFiles;
 
-    if (searchQuery.trim()) {
+    if (isSearching) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         (f) =>
           f.title.toLowerCase().includes(q) ||
+          f.path.toLowerCase().includes(q) ||
           f.codec.toLowerCase().includes(q) ||
           f.resolution.toLowerCase().includes(q) ||
           f.audioTrack.toLowerCase().includes(q) ||
-          f.genres.some((g) => g.toLowerCase().includes(q))
+          f.genres.some((g) => g.toLowerCase().includes(q)) ||
+          (f.director && f.director.toLowerCase().includes(q))
       );
     }
 
-    if (selectedDriveId) {
+    if (selectedFolder?.path) {
+      const folderPrefix = selectedFolder.path.replace(/\/$/, '');
+      result = result.filter(
+        (f) => f.path === folderPrefix || f.path.startsWith(`${folderPrefix}/`)
+      );
+    } else if (selectedDriveId) {
       if (selectedDriveId === 'nvme-primary') {
         result = result.filter((f) => f.path.startsWith('/mnt/nvme0n1'));
       }
     }
 
     return result;
-  }, [localMediaFiles, recentlyPlayedFiles, longestFiles, searchQuery, selectedDriveId, activeLibraryTab]);
+  }, [localMediaFiles, recentlyPlayedFiles, longestFiles, searchQuery, selectedDriveId, selectedFolder, activeLibraryTab, isSearching]);
 
   // All Peer Media combined or single selected peer
   const activePeer = useMemo(() => {
@@ -362,6 +462,15 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
       .filter((peer) => peer.filteredMedia.length > 0);
   }, [peerLibraries, selectedPeerId, searchQuery]);
 
+  const hasLocalSearchResults = searchScopeIncludesLocal && filteredLocalFiles.length > 0;
+  const hasPeerSearchResults = searchScopeIncludesPeers && categorizedPeerLibraries.length > 0;
+  const showLibraryEmpty =
+    isSearching
+      ? !hasLocalSearchResults && !hasPeerSearchResults
+      : activeLibraryTab === 'peers'
+      ? categorizedPeerLibraries.length === 0
+      : filteredLocalFiles.length === 0;
+
   // Handle Add Folder submit
   const handleAddFolder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -420,15 +529,27 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-500/15 border border-sky-400/30 text-sky-400 flex items-center justify-center shadow-lg shadow-sky-500/10">
-              <HardDrive className="w-5 h-5" />
+            <div className={`w-10 h-10 rounded-2xl border flex items-center justify-center shadow-lg ${
+              activePeer
+                ? 'bg-pink-500/15 border-pink-400/30 text-pink-300 shadow-pink-500/10'
+                : 'bg-sky-500/15 border-sky-400/30 text-sky-400 shadow-sky-500/10'
+            }`}>
+              {activePeer ? <Users className="w-5 h-5" /> : <HardDrive className="w-5 h-5" />}
             </div>
             <div>
               <h1 className="font-display font-extrabold text-2xl lg:text-3xl text-white tracking-wide">
-                Local Media Libraries
+                {activePeer
+                  ? activePeer.name
+                  : selectedFolder
+                    ? selectedFolder.name
+                    : 'Local Media Libraries'}
               </h1>
               <p className="text-xs lg:text-sm text-zinc-400 mt-0.5">
-                Direct zero-transcode NVMe SSD storage, local network mounts, and peer mesh nodes.
+                {activePeer
+                  ? `${activePeer.media.length} shared titles · ${activePeer.owner} · ${activePeer.pingMs}ms · ${activePeer.bandwidth}`
+                  : selectedFolder
+                    ? `Showing media from ${selectedFolder.path}`
+                    : 'Direct zero-transcode NVMe SSD storage, local network mounts, and peer mesh nodes.'}
               </p>
             </div>
           </div>
@@ -691,9 +812,12 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
               </button>
             </div>
 
-            {searchQuery.trim() && (
+            {isSearching && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-400/20 text-[11px] font-mono text-purple-100 ml-1">
-                <span className="text-purple-300 font-bold">{filteredLocalFiles.length}</span>
+                <span className="text-purple-300 font-bold">
+                  {(searchScopeIncludesLocal ? filteredLocalFiles.length : 0) +
+                    (searchScopeIncludesPeers ? peerSharedFiles.length : 0)}
+                </span>
                 <span>matches</span>
               </div>
             )}
@@ -820,7 +944,17 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
         <div className="flex flex-col gap-5">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider font-mono flex items-center gap-2">
-              {activeLibraryTab === 'peers' ? (
+              {isSearching ? (
+                <>
+                  <Search className="w-4 h-4 text-purple-300" />
+                  <span>
+                    Search Results for &quot;{searchQuery.trim()}&quot; (
+                    {(searchScopeIncludesLocal ? filteredLocalFiles.length : 0) +
+                      (searchScopeIncludesPeers ? peerSharedFiles.length : 0)}
+                    )
+                  </span>
+                </>
+              ) : activeLibraryTab === 'peers' ? (
                 <>
                   <Users className="w-4 h-4 text-pink-400" />
                   <span>
@@ -837,6 +971,24 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                   <Clock className="w-4 h-4 text-amber-400" />
                   <span>Longest ({filteredLocalFiles.length})</span>
                 </>
+              ) : selectedFolder ? (
+                <>
+                  <Folder className="w-4 h-4 text-sky-400" />
+                  <span>
+                    {selectedFolder.name} ({filteredLocalFiles.length})
+                  </span>
+                  {onClearFolder && (
+                    <button
+                      type="button"
+                      onClick={onClearFolder}
+                      className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold normal-case tracking-normal text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 cursor-pointer"
+                      title="Show all local media"
+                    >
+                      <X className="w-3 h-3" />
+                      Clear folder
+                    </button>
+                  )}
+                </>
               ) : (
                 <>
                   <Clock className="w-4 h-4 text-sky-400" />
@@ -846,15 +998,17 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
             </h3>
           </div>
 
-          {(activeLibraryTab === 'peers' ? categorizedPeerLibraries.length === 0 : filteredLocalFiles.length === 0) ? (
+          {showLibraryEmpty ? (
             <div className="h-48 flex flex-col items-center justify-center p-8 rounded-3xl bg-white/5 border border-white/10 text-center">
               <Search className="w-10 h-10 text-zinc-600 mb-2" />
               <p className="text-sm font-semibold text-white">
-                {activeLibraryTab === 'peers'
-                  ? (searchQuery ? `No peer shared files match "${searchQuery}"` : 'No peer shared media files currently available')
-                  : `No local media files match "${searchQuery}"`}
+                {isSearching
+                  ? `No files match "${searchQuery.trim()}"`
+                  : activeLibraryTab === 'peers'
+                  ? 'No peer shared media files currently available'
+                  : 'No local media files found'}
               </p>
-              {searchQuery && (
+              {isSearching && (
                 <button
                   onClick={() => setSearchQuery('')}
                   className="mt-3 px-4 py-1.5 rounded-xl bg-white/10 text-xs text-sky-400 hover:text-sky-300 font-medium cursor-pointer"
@@ -864,8 +1018,9 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
               )}
             </div>
           ) : viewMode === 'grid' ? (
-            /* POSTER GRID VIEW */
-            activeLibraryTab === 'peers' ? (
+            /* POSTER GRID VIEW — search results land here */
+            <div className="flex flex-col gap-8">
+            {(activeLibraryTab === 'peers' || (isSearching && searchScopeIncludesPeers && hasPeerSearchResults)) && (
               <div className="flex flex-col gap-8">
                 {categorizedPeerLibraries.map((peerLibrary) => (
                   <div
@@ -913,21 +1068,21 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                     </div>
 
                     {/* Movie Grid for this Peer Library */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                       {peerLibrary.filteredMedia.map((item) => (
                         <div
                           key={`${peerLibrary.id}-${item.id}`}
                           className="group relative rounded-2xl overflow-hidden bg-[#161618] border border-white/10 hover:border-pink-500/50 hover:shadow-xl hover:shadow-pink-500/10 transition-all duration-300 flex flex-col justify-between"
                         >
-                          {/* Top Preview Image 16:9 */}
+                          {/* Portrait movie poster */}
                           <div 
                             onClick={() => onPlayMovie(item)}
-                            className="relative w-full aspect-video bg-zinc-900 overflow-hidden cursor-pointer"
+                            className="relative w-full aspect-[2/3] bg-zinc-900 overflow-hidden cursor-pointer"
                           >
                             <img
-                              src={item.bannerUrl || item.posterUrl}
+                              src={item.posterUrl || item.bannerUrl}
                               alt={item.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
+                              className="w-full h-full object-cover object-top group-hover:scale-105 transition-all duration-300"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
@@ -986,34 +1141,9 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                               </span>
                             </div>
 
-                            {/* Card Footer Actions */}
-                            <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-2">
-                              <button
-                                onClick={() => onInspectMovie(item)}
-                                className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-medium text-zinc-300 hover:text-white transition-all cursor-pointer"
-                              >
-                                Media Info
-                              </button>
-
-                              <div className="flex items-center gap-2">
-                                {onOpenWatchParty && (
-                                  <button
-                                    onClick={() => onOpenWatchParty(item)}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 hover:text-white text-[11px] font-semibold transition-all cursor-pointer border border-pink-500/20"
-                                    title="Start peer watch party"
-                                  >
-                                    <Users className="w-3 h-3" />
-                                    <span>Party</span>
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => onPlayMovie(item)}
-                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-pink-500 hover:bg-pink-400 text-white font-bold text-[11px] shadow-sm transition-all cursor-pointer"
-                                >
-                                  <Play className="w-3 h-3 fill-current" />
-                                  <span>Direct Play</span>
-                                </button>
-                              </div>
+                            {/* Card Footer Actions — hero-style buttons */}
+                            <div className="pt-2 border-t border-white/5">
+                              {renderHeroStyleActions(item, { showWatchParty: true, compact: true })}
                             </div>
                           </div>
                         </div>
@@ -1022,8 +1152,10 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-5">
+            )}
+
+            {searchScopeIncludesLocal && hasLocalSearchResults && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {filteredLocalFiles.map((file) => {
                   const movie = convertToMovie(file);
 
@@ -1032,15 +1164,15 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                       key={file.id}
                       className="group relative rounded-2xl overflow-hidden bg-[#161618] border border-white/10 hover:border-white/25 hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
                     >
-                      {/* Top Preview Image 16:9 */}
+                      {/* Portrait movie poster */}
                       <div 
                         onClick={() => onPlayMovie(movie)}
-                        className="relative w-full aspect-video bg-zinc-900 overflow-hidden cursor-pointer"
+                        className="relative w-full aspect-[2/3] bg-zinc-900 overflow-hidden cursor-pointer"
                       >
                         <img
-                          src={file.bannerUrl || file.posterUrl}
+                          src={file.posterUrl || file.bannerUrl}
                           alt={file.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
+                          className="w-full h-full object-cover object-top group-hover:scale-105 transition-all duration-300"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
@@ -1052,7 +1184,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                         </div>
 
                         {/* Progress bar for Recently Played */}
-                        {activeLibraryTab === 'played' && (
+                        {!isSearching && activeLibraryTab === 'played' && (
                           <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
                             <div 
                               className="h-full bg-emerald-400" 
@@ -1092,7 +1224,8 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                   );
                 })}
               </div>
-            )
+            )}
+            </div>
           ) : (
             /* TECHNICAL DIAGNOSTICS INSPECTOR VIEW (Table-like rows) */
             activeLibraryTab === 'peers' ? (
@@ -1201,32 +1334,9 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                             </div>
                           </div>
 
-                          {/* Action buttons */}
-                          <div className="flex items-center gap-2 flex-shrink-0 self-end lg:self-center">
-                            {onOpenWatchParty && (
-                              <button
-                                onClick={() => onOpenWatchParty(item)}
-                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 text-xs font-semibold text-pink-300 hover:text-white transition-all cursor-pointer border border-pink-500/20"
-                              >
-                                <Users className="w-3.5 h-3.5" />
-                                <span>Watch Party</span>
-                              </button>
-                            )}
-
-                            <button
-                              onClick={() => onInspectMovie(item)}
-                              className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-medium text-white transition-all cursor-pointer"
-                            >
-                              Media Info
-                            </button>
-
-                            <button
-                              onClick={() => onPlayMovie(item)}
-                              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-pink-500 hover:bg-pink-400 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
-                            >
-                              <Play className="w-3.5 h-3.5 fill-current" />
-                              <span>Direct Play</span>
-                            </button>
+                          {/* Action buttons — hero-style */}
+                          <div className="flex-shrink-0 self-end lg:self-center">
+                            {renderHeroStyleActions(item, { showWatchParty: true, compact: true })}
                           </div>
                         </div>
                       ))}
@@ -1290,29 +1400,9 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-2 flex-shrink-0 self-end lg:self-center">
-                        <button
-                          onClick={() => onStreamSelectorMovie(movie)}
-                          className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-300 hover:text-white transition-all cursor-pointer"
-                        >
-                          Platforms
-                        </button>
-
-                        <button
-                          onClick={() => onInspectMovie(movie)}
-                          className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-medium text-white transition-all cursor-pointer"
-                        >
-                          Media Info & IMDb
-                        </button>
-
-                        <button
-                          onClick={() => onPlayMovie(movie)}
-                          className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-md transition-all cursor-pointer"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>Direct Play</span>
-                        </button>
+                      {/* Action buttons — hero-style */}
+                      <div className="flex-shrink-0 self-end lg:self-center">
+                        {renderHeroStyleActions(movie, { showWatchParty: !!onOpenWatchParty, compact: true })}
                       </div>
                     </div>
                   );

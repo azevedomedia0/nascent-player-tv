@@ -17,11 +17,12 @@ import {
   Sparkles,
   ExternalLink,
   ListPlus,
-  ChevronDown
+  ChevronDown,
+  X
 } from 'lucide-react';
 import { FeaturedMovie } from './TvHeroBillboard';
 import { UserCustomList } from './TvSearchModal';
-import { fetchImdbMetadata, getActorHeadshot, enrichCastArray, CastMember } from '../../lib/imdbService';
+import { fetchImdbMetadata, enrichCastArray, fetchImdbCastImages, CastMember } from '../../lib/imdbService';
 import { getAvailableSeasons, getEpisodesForSeason, isTvSeries } from '../../lib/tvEpisodeData';
 import { TvStreamSelectorModal, StreamSource } from './TvStreamSelectorModal';
 
@@ -61,9 +62,16 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
   const [newListName, setNewListName] = useState('');
   const [isStreamSelectorOpen, setIsStreamSelectorOpen] = useState(false);
   const [isFetchingImdb, setIsFetchingImdb] = useState(false);
+  const [expandedCast, setExpandedCast] = useState<{ name: string; photoUrl: string } | null>(null);
   const [currentCast, setCurrentCast] = useState<CastMember[]>(() => {
     return enrichCastArray(movie.cast || []);
   });
+
+  const enlargePhotoUrl = (url: string) =>
+    url
+      .replace(/_UX\d+/i, '_UX1600')
+      .replace(/_UY\d+/i, '_UY1600')
+      .replace(/_CR\d+,\d+,\d+,\d+/i, '');
 
   // Season and Episode state
   const availableSeasons = useMemo(() => {
@@ -74,6 +82,15 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
   const [viewMode, setViewMode] = useState<'episodes' | 'sources'>('episodes');
   const [isSeasonMenuOpen, setIsSeasonMenuOpen] = useState(false);
   const seasonMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!expandedCast) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpandedCast(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [expandedCast]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -101,19 +118,40 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
   useEffect(() => {
     if (!movie) return;
 
-    setCurrentCast(enrichCastArray(movie.cast || []));
-
     let isCancelled = false;
 
     const autoFetchImdb = async () => {
       setIsFetchingImdb(true);
       try {
-        const isTt = movie.id?.startsWith('tt') ? movie.id : undefined;
+        // Seed cast immediately, then always hydrate live IMDb headshots
+        const seedCast = enrichCastArray(movie.cast || []);
+        setCurrentCast(seedCast);
+        const seededWithPhotos = await fetchImdbCastImages(seedCast);
+        if (!isCancelled) setCurrentCast(seededWithPhotos);
+
+        const isTt = movie.id?.startsWith('tt')
+          ? movie.id
+          : (movie as any).imdbId?.startsWith?.('tt')
+            ? (movie as any).imdbId
+            : undefined;
         const meta = await fetchImdbMetadata(isTt || movie.title);
 
-        if (isCancelled || !meta) return;
+        if (isCancelled) return;
 
-        const enrichedCast = enrichCastArray(meta.cast && meta.cast.length > 0 ? meta.cast : movie.cast || []);
+        if (!meta) {
+          // Keep seeded cast (already IMDb-hydrated) even if title lookup fails
+          if (onUpdateMetadata && seededWithPhotos.length > 0) {
+            onUpdateMetadata(movie.id, { cast: seededWithPhotos });
+          }
+          return;
+        }
+
+        const baseCast = enrichCastArray(
+          meta.cast && meta.cast.length > 0 ? meta.cast : movie.cast || []
+        );
+        const enrichedCast = await fetchImdbCastImages(baseCast);
+        if (isCancelled) return;
+
         setCurrentCast(enrichedCast);
 
         if (onUpdateMetadata) {
@@ -443,12 +481,20 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
               {movie.imdbVotes && <span className="text-zinc-400 text-xs font-mono">({movie.imdbVotes} votes)</span>}
             </span>
             <span className="text-zinc-600 font-bold">·</span>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/10 border border-white/20">
-              {certification}
-            </span>
-            <span className="text-zinc-600 font-bold">·</span>
-            <span>{movie.releaseYear}</span>
-            <span className="text-zinc-600 font-bold">·</span>
+            {certification && certification !== String(movie.releaseYear) && (
+              <>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/10 border border-white/20">
+                  {certification}
+                </span>
+                <span className="text-zinc-600 font-bold">·</span>
+              </>
+            )}
+            {movie.releaseYear && (
+              <>
+                <span>{movie.releaseYear}</span>
+                <span className="text-zinc-600 font-bold">·</span>
+              </>
+            )}
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-zinc-400" />
               <span>{durationText}</span>
@@ -758,26 +804,42 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                   const initials = name.split(' ').map((n) => n[0]).join('').slice(0, 2);
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={idx}
-                      className="group flex flex-col items-center text-center p-2.5 rounded-2xl hover:bg-white/5 transition-all w-28 shrink-0 cursor-default"
+                      onClick={() => {
+                        if (photo) setExpandedCast({ name, photoUrl: photo });
+                      }}
+                      className={`group flex flex-col items-center text-center p-2.5 rounded-2xl hover:bg-white/5 transition-all w-32 shrink-0 ${
+                        photo ? 'cursor-zoom-in' : 'cursor-default'
+                      }`}
                     >
-                      {photo ? (
-                        <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white/20 group-hover:border-sky-400 group-hover:scale-105 transition-all shadow-xl bg-zinc-800 mb-2.5">
+                      <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-white/20 group-hover:border-sky-400 group-hover:scale-105 transition-all shadow-xl bg-zinc-800 mb-2.5 shrink-0">
+                        <div className="absolute inset-0 bg-gradient-to-tr from-sky-600 to-indigo-600 text-white font-black text-xl flex items-center justify-center select-none">
+                          {initials}
+                        </div>
+                        {photo && (
                           <img
                             src={photo}
                             alt={name}
-                            className="w-full h-full object-cover"
+                            className="absolute inset-0 z-10 block h-full w-full min-h-full min-w-full object-cover object-top"
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
                             onError={(e) => {
-                              (e.target as HTMLElement).style.display = 'none';
+                              const img = e.target as HTMLImageElement;
+                              img.style.display = 'none';
+                              setCurrentCast((prev) =>
+                                prev.map((member, memberIdx) =>
+                                  memberIdx === idx
+                                    ? { ...member, photoUrl: undefined }
+                                    : member
+                                )
+                              );
                             }}
                           />
-                        </div>
-                      ) : (
-                        <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 text-white font-black text-lg flex items-center justify-center shrink-0 border-2 border-white/20 group-hover:border-sky-400 group-hover:scale-105 transition-all shadow-xl mb-2.5">
-                          {initials}
-                        </div>
-                      )}
+                        )}
+                      </div>
                       <span className="text-xs font-bold text-white group-hover:text-sky-300 transition-colors line-clamp-1 w-full">
                         {name}
                       </span>
@@ -786,7 +848,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                           {role}
                         </span>
                       )}
-                    </div>
+                    </button>
                   );
                 })
               ) : (
@@ -814,6 +876,35 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
             onClose();
           }}
         />
+      )}
+
+      {/* Full-screen cast headshot */}
+      {expandedCast && (
+        <div
+          className="fixed inset-0 z-[80] bg-black animate-in fade-in duration-200 cursor-zoom-out"
+          onClick={() => setExpandedCast(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={expandedCast.name}
+        >
+          <button
+            type="button"
+            onClick={() => setExpandedCast(null)}
+            className="absolute top-5 right-5 z-10 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={enlargePhotoUrl(expandedCast.photoUrl)}
+            alt={expandedCast.name}
+            className="absolute inset-0 h-full w-full object-cover object-top pointer-events-none"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-8 py-8 pointer-events-none">
+            <p className="text-2xl font-bold text-white tracking-tight">{expandedCast.name}</p>
+          </div>
+        </div>
       )}
     </div>
   );

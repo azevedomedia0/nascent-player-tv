@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Settings, 
   Sliders, 
-  Zap, 
   Puzzle, 
   Wifi, 
   Volume2, 
@@ -14,7 +13,6 @@ import {
   ShieldCheck, 
   RotateCcw,
   Languages,
-  Film,
   HardDrive,
   Moon,
   Tv,
@@ -34,8 +32,15 @@ import {
   ChevronDown,
   Layers,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  Users,
+  Share2,
+  WifiOff
 } from 'lucide-react';
+import { SHARED_PEER_LIBRARIES } from '../../lib/tvMediaData';
+import { addonPaywall } from '../../lib/plugins/addonPaywall';
+import { TvAddonPaywallModal } from './TvAddonPaywallModal';
 
 interface TvSettingsModalProps {
   isOpen: boolean;
@@ -44,6 +49,8 @@ interface TvSettingsModalProps {
   onToggleRemote?: () => void;
   isRemoteOpen?: boolean;
   onOpenPlugins?: () => void;
+  pluginsActivated?: boolean;
+  onPluginsActivatedChange?: (activated: boolean) => void;
   eqGains: {
     hz60: number;
     hz230: number;
@@ -60,12 +67,13 @@ interface TvSettingsModalProps {
 export type SettingCategory = 
   | 'profile'
   | 'plugins'
-  | 'remote'
+  | 'remote' // legacy alias → Devices & Drives
   | 'audio-video' 
-  | 'playback' 
+  | 'playback' // legacy alias → Display & Sound
   | 'subtitles' 
-  | 'streaming' 
+  | 'streaming' // legacy alias → Server & LAN
   | 'storage' 
+  | 'peers'
   | 'network';
 
 interface PluginItem {
@@ -98,13 +106,20 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   onToggleRemote,
   isRemoteOpen = false,
   onOpenPlugins,
+  pluginsActivated = false,
+  onPluginsActivatedChange,
   eqGains,
   onEqChange,
   audioPreset,
   onAudioPresetChange,
   initialCategory = 'profile',
 }) => {
-  const [activeCategory, setActiveCategory] = useState<SettingCategory>(initialCategory);
+  const [activeCategory, setActiveCategory] = useState<SettingCategory>(() => {
+    if (initialCategory === 'remote') return 'storage';
+    if (initialCategory === 'streaming') return 'network';
+    if (initialCategory === 'playback') return 'audio-video';
+    return initialCategory;
+  });
 
   // Profile Settings State
   const [profiles, setProfiles] = useState<UserProfile[]>([
@@ -115,7 +130,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [activeProfileId, setActiveProfileId] = useState<string>('1');
   const [editingName, setEditingName] = useState(false);
   const [profileNameInput, setProfileNameInput] = useState('Steven Azevedo');
-  const [maturityRating, setMaturityRating] = useState<'all' | 'pg13' | 'family'>('all');
+  const [maturityRating, setMaturityRating] = useState<'all' | 'pg13' | 'mature' | 'family'>('all');
   const [autoplayTrailers, setAutoplayTrailers] = useState(true);
   const [showContinueWatching, setShowContinueWatching] = useState(true);
   const [privateViewing, setPrivateViewing] = useState(false);
@@ -129,6 +144,28 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [manifestUrl, setManifestUrl] = useState('');
   const [isInstallingFromUrl, setIsInstallingFromUrl] = useState(false);
   const [pluginFeedback, setPluginFeedback] = useState<string | null>(null);
+  const [pluginsUnlocked, setPluginsUnlocked] = useState(() => addonPaywall.isUnlocked());
+  const [isPluginPaywallOpen, setIsPluginPaywallOpen] = useState(false);
+
+  useEffect(() => {
+    const sync = (unlocked: boolean) => {
+      setPluginsUnlocked(unlocked);
+      try {
+        if (unlocked) localStorage.setItem('nascent-plugins-unlocked', '1');
+        else localStorage.removeItem('nascent-plugins-unlocked');
+      } catch {
+        /* ignore */
+      }
+    };
+    sync(addonPaywall.isUnlocked());
+    return addonPaywall.subscribe(sync);
+  }, []);
+
+  useEffect(() => {
+    if (activeCategory === 'plugins' && !pluginsUnlocked) {
+      setIsPluginPaywallOpen(true);
+    }
+  }, [activeCategory, pluginsUnlocked]);
 
   const [pluginsList, setPluginsList] = useState<PluginItem[]>([
     {
@@ -266,6 +303,62 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [libraryUpdateFreq, setLibraryUpdateFreq] = useState<'hourly' | 'daily' | 'manual'>('daily');
   const [cacheCleared, setCacheCleared] = useState(false);
 
+  // Peers & Library Shares
+  const [shareLibraryEnabled, setShareLibraryEnabled] = useState(true);
+  const [autoAcceptLanPeers, setAutoAcceptLanPeers] = useState(false);
+  const [peerDiscovery, setPeerDiscovery] = useState(true);
+  const [shareQuality, setShareQuality] = useState<'low' | 'med' | 'high'>('high');
+  const [inviteCode, setInviteCode] = useState('NV-7F2K-9QPM');
+  const [peerJoinCode, setPeerJoinCode] = useState('');
+  const [peerJoinFeedback, setPeerJoinFeedback] = useState<string | null>(null);
+  const [addPeerName, setAddPeerName] = useState('');
+  const [addPeerCode, setAddPeerCode] = useState('');
+  const [addPeerFeedback, setAddPeerFeedback] = useState<string | null>(null);
+  const [isAddPeerOpen, setIsAddPeerOpen] = useState(false);
+  const [peerRequests, setPeerRequests] = useState<
+    Array<{
+      id: string;
+      name: string;
+      handle: string;
+      initials: string;
+      color: string;
+      direction: 'incoming' | 'outgoing';
+      library: string;
+      sentAt: string;
+    }>
+  >([
+    {
+      id: 'req-in-1',
+      name: 'Jordan Lee',
+      handle: '@jordan_l',
+      initials: 'JL',
+      color: 'bg-gradient-to-tr from-violet-500 to-fuchsia-600',
+      direction: 'incoming',
+      library: 'Wants access to your library',
+      sentAt: '12m ago',
+    },
+    {
+      id: 'req-in-2',
+      name: 'Nova Media Lab',
+      handle: '@nova_lab',
+      initials: 'NM',
+      color: 'bg-gradient-to-tr from-cyan-500 to-blue-600',
+      direction: 'incoming',
+      library: 'Wants access to your library',
+      sentAt: '1h ago',
+    },
+    {
+      id: 'req-out-1',
+      name: 'Alex Remux Vault',
+      handle: '@alex_r',
+      initials: 'AR',
+      color: 'bg-gradient-to-tr from-amber-500 to-orange-600',
+      direction: 'outgoing',
+      library: 'Pending access to Alex’s 4K Remux Vault',
+      sentAt: '3h ago',
+    },
+  ]);
+
   // Server & LAN
   const [dlnaBroadcast, setDlnaBroadcast] = useState(true);
   const [upnpPortForward, setUpnpPortForward] = useState(true);
@@ -387,7 +480,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#131313]/96 backdrop-blur-2xl flex items-center justify-center p-4 lg:p-8 select-none animate-in fade-in duration-200">
-      <div className="relative w-full max-w-5xl h-[670px] bg-zinc-950/90 border border-white/20 rounded-[32px] overflow-hidden shadow-2xl flex flex-col">
+      <div className="relative w-full max-w-6xl h-[min(860px,90vh)] bg-zinc-950/90 border border-white/20 rounded-[32px] overflow-hidden shadow-2xl flex flex-col">
         {/* Top Header */}
         <div className="px-8 py-4.5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -401,22 +494,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            {/* TV Remote Button inside Settings */}
-            <button
-              onClick={() => {
-                onToggleRemote?.();
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-semibold transition-all focus:ring-2 focus:ring-sky-400 focus:outline-none ${
-                isRemoteOpen
-                  ? 'bg-sky-500 text-black border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] font-bold'
-                  : 'bg-white/10 hover:bg-white/20 text-zinc-200 border-white/15'
-              }`}
-              title="Launch Android TV Virtual Remote"
-            >
-              <Gamepad2 className="w-4 h-4" />
-              <span>TV Remote {isRemoteOpen ? '(Active)' : ''}</span>
-            </button>
-
             <button
               onClick={onClose}
               className="p-2.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
@@ -430,17 +507,29 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
         <div className="flex-1 flex overflow-hidden">
           {/* Left Navigation Rail */}
           <div className="w-64 border-r border-white/10 p-4 flex flex-col gap-1.5 bg-black/40 overflow-y-auto no-scrollbar">
-            {[
+            {(() => {
+              const incomingPeerRequests = peerRequests.filter((r) => r.direction === 'incoming').length;
+              return [
               { id: 'profile', label: 'Profile & Account', icon: User, badge: currentProfile.initials },
-              { id: 'plugins', label: 'Plugins & Addons', icon: Puzzle, count: pluginsList.filter(p => p.isInstalled && p.enabled).length },
-              { id: 'remote', label: 'TV Remote & D-Pad', icon: Gamepad2 },
               { id: 'audio-video', label: 'Display & Sound', icon: Sliders },
-              { id: 'playback', label: 'Playback & Video', icon: Film },
               { id: 'subtitles', label: 'Subtitles & Audio', icon: Languages },
-              { id: 'streaming', label: 'Nascent Engine', icon: Zap },
-              { id: 'storage', label: 'Storage & Drives', icon: HardDrive },
+              { id: 'storage', label: 'Devices & Drives', icon: HardDrive },
+              {
+                id: 'peers',
+                label: 'Peers & Library Shares',
+                icon: Users,
+                ...(incomingPeerRequests > 0 ? { count: incomingPeerRequests } : {}),
+              },
               { id: 'network', label: 'Server & LAN', icon: Server },
-            ].map((cat) => {
+              {
+                id: 'plugins',
+                label: 'Plugins & Addons',
+                icon: Puzzle,
+                count: pluginsList.filter((p) => p.isInstalled && p.enabled).length,
+                locked: !pluginsUnlocked,
+              },
+            ];
+            })().map((cat) => {
               const Icon = cat.icon;
               const isActive = activeCategory === cat.id;
               return (
@@ -453,20 +542,25 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                       : 'text-zinc-300 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <Icon className="w-4 h-4 flex-shrink-0" />
-                    <span>{cat.label}</span>
+                    <span className="truncate">{cat.label}</span>
                   </div>
-                  {cat.badge && (
-                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-sky-400'}`}>
-                      {cat.badge}
-                    </span>
-                  )}
-                  {typeof cat.count === 'number' && (
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-zinc-400'}`}>
-                      {cat.count}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {cat.locked && (
+                      <Lock className={`w-3.5 h-3.5 ${isActive ? 'text-black/70' : 'text-amber-400'}`} />
+                    )}
+                    {cat.badge && (
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-sky-400'}`}>
+                        {cat.badge}
+                      </span>
+                    )}
+                    {typeof cat.count === 'number' && (
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-zinc-400'}`}>
+                        {cat.count}
+                      </span>
+                    )}
+                  </div>
                 </button>
               );
             })}
@@ -603,14 +697,15 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </div>
                     <div className="flex items-center gap-1.5">
                       {[
-                        { id: 'all', label: 'All Ratings (R / TV-MA)' },
-                        { id: 'pg13', label: 'Teens (PG-13 / TV-14)' },
-                        { id: 'family', label: 'Family (G / PG)' },
+                        { id: 'all', label: 'All Ratings' },
+                        { id: 'mature', label: 'R / TV-MA' },
+                        { id: 'pg13', label: 'PG-13 / TV-14' },
+                        { id: 'family', label: 'G / PG' },
                       ].map((item) => (
                         <button
                           key={item.id}
                           onClick={() => setMaturityRating(item.id as any)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${
                             maturityRating === item.id
                               ? 'bg-sky-500 text-black font-bold shadow-md'
                               : 'bg-white/5 hover:bg-white/10 text-zinc-300'
@@ -693,7 +788,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                       <button
                         key={tab.id}
                         onClick={() => setDefaultStartupTab(tab.id as any)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${
                           defaultStartupTab === tab.id
                             ? 'bg-sky-500 text-black font-bold'
                             : 'bg-white/5 hover:bg-white/10 text-zinc-300'
@@ -707,9 +802,65 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 2. PLUGINS TAB */}
+            {/* 2. PLUGINS TAB (last in nav — paywalled) */}
             {activeCategory === 'plugins' && (
-              <div className="flex flex-col gap-5 animate-in fade-in duration-150">
+              <div className="relative flex flex-col gap-5 animate-in fade-in duration-150 min-h-full">
+                {!pluginsUnlocked ? (
+                  <div className="relative flex-1 min-h-[420px] rounded-3xl overflow-hidden border border-pink-500/30 bg-[#121212]">
+                    {/* Dimmed preview of plugins behind paywall */}
+                    <div className="absolute inset-0 opacity-30 blur-[2px] pointer-events-none select-none p-6 overflow-hidden">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Puzzle className="w-5 h-5 text-sky-400" />
+                        <span className="font-display font-bold text-xl text-white">Plugins & Community Addons</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {pluginsList.slice(0, 4).map((plugin) => (
+                          <div key={plugin.id} className="p-4 rounded-2xl bg-white/5 border border-white/10">
+                            <div className="font-bold text-sm text-white">{plugin.name}</div>
+                            <p className="text-[11px] text-zinc-400 mt-1 line-clamp-2">{plugin.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+                    <div className="relative z-10 h-full min-h-[420px] flex flex-col items-center justify-center text-center px-8 py-12 gap-4">
+                      <div
+                        className="w-16 h-16 rounded-2xl border border-white/20 text-[#1b1b1b] flex items-center justify-center shadow-lg shadow-fuchsia-500/25"
+                        style={{
+                          backgroundImage:
+                            'linear-gradient(135deg, var(--logo-magenta) 0%, var(--logo-purple) 28%, var(--logo-cyan) 55%, var(--logo-mint) 78%, var(--logo-gold) 100%)',
+                        }}
+                      >
+                        <Lock className="w-7 h-7" />
+                      </div>
+                      <div className="max-w-md space-y-2">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-pink-500/15 border border-pink-400/30 text-pink-200 text-[10px] font-bold uppercase tracking-wider">
+                          <Sparkles className="w-3 h-3 text-amber-300" />
+                          VIP Pass Required
+                        </div>
+                        <h3 className="font-display font-bold text-2xl text-white">
+                          Unlock Plugins & Community Addons
+                        </h3>
+                        <p className="text-sm text-zinc-400 leading-relaxed">
+                          Subscribe to access scrapers, subtitle sources, audio decoders, and cloud torrent resolvers.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsPluginPaywallOpen(true)}
+                        className="flex items-center gap-2 px-6 py-3 rounded-full text-[#1b1b1b] font-extrabold text-xs shadow-lg shadow-fuchsia-500/25 hover:opacity-95 transition-all cursor-pointer border border-[#1b1b1b]/30"
+                        style={{
+                          backgroundImage:
+                            'linear-gradient(135deg, var(--logo-magenta) 0%, var(--logo-purple) 28%, var(--logo-cyan) 55%, var(--logo-mint) 78%, var(--logo-gold) 100%)',
+                        }}
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>View VIP Pass Plans</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 {pluginFeedback && (
                   <div className="px-4 py-2.5 rounded-2xl bg-sky-950/70 border border-sky-400/40 text-sky-300 text-xs flex items-center gap-2 animate-in fade-in">
                     <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />
@@ -718,36 +869,72 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                 )}
 
                 {/* Plugins Header & Manifest URL installer */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-1 border-b border-white/10">
-                  <div>
-                    <h3 className="font-display font-bold text-xl text-white flex items-center gap-2">
-                      <Puzzle className="w-5 h-5 text-sky-400" />
-                      <span>Plugins & Community Addons</span>
-                    </h3>
-                    <p className="text-xs text-zinc-400 mt-0.5">
-                      Extend scrapers, subtitle sources, audio decoders, and cloud torrent resolvers.
-                    </p>
+                <div className="flex flex-col gap-3 pb-1 border-b border-white/10">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-display font-bold text-xl text-white flex items-center gap-2">
+                        <Puzzle className="w-5 h-5 text-sky-400" />
+                        <span>Plugins & Community Addons</span>
+                      </h3>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        Extend scrapers, subtitle sources, audio decoders, and cloud torrent resolvers.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {onOpenPlugins && (
+                        <button
+                          onClick={() => {
+                            onClose();
+                            onOpenPlugins();
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                        >
+                          <Puzzle className="w-3.5 h-3.5" />
+                          <span>Add Addon</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setIsInstallingFromUrl(!isInstallingFromUrl)}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-md transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Install from URL</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {onOpenPlugins && (
-                      <button
-                        onClick={() => {
-                          onClose();
-                          onOpenPlugins();
-                        }}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
-                      >
-                        <Puzzle className="w-3.5 h-3.5" />
-                        <span>Addon Studio & Sandbox</span>
-                      </button>
-                    )}
+                  <div className="flex items-center justify-between gap-4 px-3.5 py-3 rounded-2xl bg-white/5 border border-white/10">
+                    <div className="min-w-0">
+                      <h5 className="text-xs font-semibold text-zinc-100">Activate Plugins</h5>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        Show a plugins shortcut next to notifications in the top bar.
+                      </p>
+                    </div>
                     <button
-                      onClick={() => setIsInstallingFromUrl(!isInstallingFromUrl)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-md transition-all cursor-pointer"
+                      type="button"
+                      role="switch"
+                      aria-checked={pluginsActivated}
+                      aria-label="Activate Plugins"
+                      onClick={() => {
+                        const next = !pluginsActivated;
+                        onPluginsActivatedChange?.(next);
+                        setPluginFeedback(
+                          next
+                            ? 'Plugins activated — shortcut added beside notifications.'
+                            : 'Plugins deactivated — top bar shortcut hidden.'
+                        );
+                        setTimeout(() => setPluginFeedback(null), 2800);
+                      }}
+                      className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400/60 ${
+                        pluginsActivated ? 'bg-sky-500' : 'bg-zinc-700'
+                      }`}
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Install from URL</span>
+                      <div
+                        className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${
+                          pluginsActivated ? 'right-0.5' : 'left-0.5'
+                        }`}
+                      />
                     </button>
                   </div>
                 </div>
@@ -889,13 +1076,107 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </div>
                   ))}
                 </div>
+                  </>
+                )}
               </div>
             )}
 
             {/* 3. Display & Sound */}
             {activeCategory === 'audio-video' && (
               <div className="flex flex-col gap-6">
+                {/* Playback & Video Preferences */}
                 <div>
+                  <h3 className="font-display font-bold text-lg text-white mb-1">Playback & Video Preferences</h3>
+                  <p className="text-xs text-zinc-400 mb-4">Frame rate matching, automation, and aspect ratio controls.</p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Auto-Play Next Episode</h4>
+                        <p className="text-xs text-zinc-400">Seamlessly continue next TV show episode</p>
+                      </div>
+                      <button
+                        onClick={() => setAutoPlayNext(!autoPlayNext)}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${autoPlayNext ? 'bg-sky-500' : 'bg-zinc-700'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${autoPlayNext ? 'right-0.5' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Auto-Skip Intros & Recaps</h4>
+                        <p className="text-xs text-zinc-400">Automatically jump past title credits</p>
+                      </div>
+                      <button
+                        onClick={() => setSkipIntros(!skipIntros)}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${skipIntros ? 'bg-sky-500' : 'bg-zinc-700'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${skipIntros ? 'right-0.5' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Match Frame Rate (24p)</h4>
+                        <p className="text-xs text-zinc-400">Eliminates judder for true 24.000 fps cinema</p>
+                      </div>
+                      <button
+                        onClick={() => setMatchFrameRate(!matchFrameRate)}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${matchFrameRate ? 'bg-sky-500' : 'bg-zinc-700'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${matchFrameRate ? 'right-0.5' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-zinc-400 uppercase">Default Aspect Ratio</span>
+                      <div className="flex items-center gap-2">
+                        {[
+                          { id: 'original', label: 'Original' },
+                          { id: 'fit', label: 'Fit to TV' },
+                          { id: 'cinema', label: '21:9 Scope' },
+                        ].map((ar) => (
+                          <button
+                            key={ar.id}
+                            onClick={() => setAspectRatio(ar.id as any)}
+                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
+                              aspectRatio === ar.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
+                            }`}
+                          >
+                            {ar.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">Resume Playback</h4>
+                      <p className="text-xs text-zinc-400">Choose behavior when opening previously watched titles</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {[
+                        { id: 'always', label: 'Resume' },
+                        { id: 'ask', label: 'Always Ask' },
+                        { id: 'restart', label: 'Start Over' },
+                      ].map((r) => (
+                        <button
+                          key={r.id}
+                          onClick={() => setResumeBehavior(r.id as any)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            resumeBehavior === r.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
+                          }`}
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/10">
                   <h3 className="font-display font-bold text-lg text-white mb-1">Cinema Audio Equalizer</h3>
                   <p className="text-xs text-zinc-400 mb-4">Fine-tune frequencies for home cinema acoustics, TV speakers, and soundbars.</p>
 
@@ -1003,103 +1284,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 4. Playback & Video */}
-            {activeCategory === 'playback' && (
-              <div className="flex flex-col gap-5">
-                <div>
-                  <h3 className="font-display font-bold text-lg text-white mb-1">Playback & Video Preferences</h3>
-                  <p className="text-xs text-zinc-400 mb-4">Frame rate matching, automation, and aspect ratio controls.</p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-semibold text-white">Auto-Play Next Episode</h4>
-                        <p className="text-xs text-zinc-400">Seamlessly continue next TV show episode</p>
-                      </div>
-                      <button
-                        onClick={() => setAutoPlayNext(!autoPlayNext)}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${autoPlayNext ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${autoPlayNext ? 'right-0.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-semibold text-white">Auto-Skip Intros & Recaps</h4>
-                        <p className="text-xs text-zinc-400">Automatically jump past title credits</p>
-                      </div>
-                      <button
-                        onClick={() => setSkipIntros(!skipIntros)}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${skipIntros ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${skipIntros ? 'right-0.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-semibold text-white">Match Frame Rate (24p)</h4>
-                        <p className="text-xs text-zinc-400">Eliminates judder for true 24.000 fps cinema</p>
-                      </div>
-                      <button
-                        onClick={() => setMatchFrameRate(!matchFrameRate)}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${matchFrameRate ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${matchFrameRate ? 'right-0.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Default Aspect Ratio</span>
-                      <div className="flex items-center gap-2">
-                        {[
-                          { id: 'original', label: 'Original' },
-                          { id: 'fit', label: 'Fit to TV' },
-                          { id: 'cinema', label: '21:9 Scope' },
-                        ].map((ar) => (
-                          <button
-                            key={ar.id}
-                            onClick={() => setAspectRatio(ar.id as any)}
-                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                              aspectRatio === ar.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                            }`}
-                          >
-                            {ar.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">Resume Playback</h4>
-                      <p className="text-xs text-zinc-400">Choose behavior when opening previously watched titles</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {[
-                        { id: 'always', label: 'Resume' },
-                        { id: 'ask', label: 'Always Ask' },
-                        { id: 'restart', label: 'Start Over' },
-                      ].map((r) => (
-                        <button
-                          key={r.id}
-                          onClick={() => setResumeBehavior(r.id as any)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                            resumeBehavior === r.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                          }`}
-                        >
-                          {r.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 5. Subtitles & Audio Languages */}
+            {/* 4. Subtitles & Audio Languages */}
             {activeCategory === 'subtitles' && (
               <div className="flex flex-col gap-5">
                 <div>
@@ -1186,9 +1371,531 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 6. Nascent Engine & ABR */}
-            {activeCategory === 'streaming' && (
+            {/* 7. Devices & Drives (includes Android TV Remote) */}
+            {activeCategory === 'storage' && (
+              <div className="flex flex-col gap-8">
+                {/* Android TV Remote Controller */}
+                <div>
+                  <h3 className="font-display font-bold text-lg text-white mb-1">Android TV Remote Controller</h3>
+                  <p className="text-xs text-zinc-400 mb-5">
+                    Navigate the interface using the virtual directional pad, media controls, and quick action shortcuts.
+                  </p>
+
+                  <div className="p-6 rounded-3xl bg-gradient-to-br from-sky-950/40 via-zinc-900/60 to-black/80 border border-sky-500/20 mb-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center shadow-lg">
+                        <Gamepad2 className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-white mb-0.5">Virtual D-Pad Remote Overlay</h4>
+                        <p className="text-xs text-zinc-400">
+                          {isRemoteOpen
+                            ? 'Virtual remote is currently active on screen.'
+                            : 'Open floating Android TV remote for directional browsing & playback.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => onToggleRemote?.()}
+                      className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-lg flex items-center gap-2 focus:ring-2 focus:ring-sky-400 focus:outline-none ${
+                        isRemoteOpen
+                          ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
+                          : 'bg-sky-500 hover:bg-sky-400 text-black shadow-sky-500/30'
+                      }`}
+                    >
+                      <Gamepad2 className="w-4 h-4" />
+                      <span>{isRemoteOpen ? 'Close Remote Overlay' : 'Launch TV Remote'}</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
+                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Remote Keyboard Shortcuts</h4>
+                      <div className="flex flex-col gap-2 text-xs">
+                        <div className="flex items-center justify-between py-1 border-b border-white/5">
+                          <span className="text-zinc-300">D-Pad Up / Down</span>
+                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">↑ / ↓ Scroll</kbd>
+                        </div>
+                        <div className="flex items-center justify-between py-1 border-b border-white/5">
+                          <span className="text-zinc-300">D-Pad Left / Right</span>
+                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">← / → Carousel</kbd>
+                        </div>
+                        <div className="flex items-center justify-between py-1 border-b border-white/5">
+                          <span className="text-zinc-300">Center OK / Select</span>
+                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Enter / Space</kbd>
+                        </div>
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-zinc-300">Back / Return</span>
+                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Esc / Backspace</kbd>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
+                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Controller Specs & Connectivity</h4>
+                      <div className="flex flex-col gap-2 text-xs">
+                        <div className="flex items-center justify-between py-1 border-b border-white/5">
+                          <span className="text-zinc-300">Profile Protocol</span>
+                          <span className="font-semibold text-zinc-200">Android TV D-Pad HID</span>
+                        </div>
+                        <div className="flex items-center justify-between py-1 border-b border-white/5">
+                          <span className="text-zinc-300">Haptic Feedback</span>
+                          <span className="font-semibold text-emerald-400">Enabled (Vibrate)</span>
+                        </div>
+                        <div className="flex items-center justify-between py-1 border-b border-white/5">
+                          <span className="text-zinc-300">Repeat Delay</span>
+                          <span className="font-mono text-zinc-300">180 ms</span>
+                        </div>
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-zinc-300">Status</span>
+                          <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            Connected
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Storage, Drives & Cache */}
+                <div className="pt-2 border-t border-white/10">
+                  <h3 className="font-display font-bold text-lg text-white mb-1">Storage, Drives & Cache</h3>
+                  <p className="text-xs text-zinc-400 mb-4">Removable media detection, disk caches, and library maintenance.</p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Auto-Scan USB Drives</h4>
+                        <p className="text-xs text-zinc-400">Scan media automatically on drive insertion</p>
+                      </div>
+                      <button
+                        onClick={() => setAutoScanUsb(!autoScanUsb)}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${autoScanUsb ? 'bg-sky-500' : 'bg-zinc-700'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${autoScanUsb ? 'right-0.5' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-zinc-400 uppercase">Library Auto-Refresh</span>
+                      <div className="flex items-center gap-2">
+                        {[
+                          { id: 'hourly', label: 'Every 6h' },
+                          { id: 'daily', label: 'Daily' },
+                          { id: 'manual', label: 'Manual' },
+                        ].map((f) => (
+                          <button
+                            key={f.id}
+                            onClick={() => setLibraryUpdateFreq(f.id as any)}
+                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
+                              libraryUpdateFreq === f.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
+                            }`}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">Video Chunk & Artwork Cache</h4>
+                      <p className="text-xs text-zinc-400">
+                        {cacheCleared ? 'Cache is clear (0 MB)' : '1.42 GB stored across indexed media & posters'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setCacheCleared(true);
+                        setTimeout(() => setCacheCleared(false), 4000);
+                      }}
+                      className="px-5 py-2.5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all"
+                    >
+                      {cacheCleared ? 'Cache Cleared!' : 'Clear Stream Cache'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Peers & Library Shares */}
+            {activeCategory === 'peers' && (
               <div className="flex flex-col gap-6">
+                <div>
+                  <h3 className="font-display font-bold text-lg text-white mb-1">Peers & Library Shares</h3>
+                  <p className="text-xs text-zinc-400 mb-4">
+                    Share your local library over P2P, discover LAN peers, and manage trusted library connections.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Share My Library</h4>
+                        <p className="text-xs text-zinc-400">Allow trusted peers to browse and stream your titles</p>
+                      </div>
+                      <button
+                        onClick={() => setShareLibraryEnabled(!shareLibraryEnabled)}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${shareLibraryEnabled ? 'bg-sky-500' : 'bg-zinc-700'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${shareLibraryEnabled ? 'right-0.5' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">LAN Peer Discovery</h4>
+                        <p className="text-xs text-zinc-400">Broadcast presence on the local network</p>
+                      </div>
+                      <button
+                        onClick={() => setPeerDiscovery(!peerDiscovery)}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${peerDiscovery ? 'bg-sky-500' : 'bg-zinc-700'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${peerDiscovery ? 'right-0.5' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Auto-Accept LAN Peers</h4>
+                        <p className="text-xs text-zinc-400">Skip invite approval for same-subnet devices</p>
+                      </div>
+                      <button
+                        onClick={() => setAutoAcceptLanPeers(!autoAcceptLanPeers)}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${autoAcceptLanPeers ? 'bg-sky-500' : 'bg-zinc-700'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${autoAcceptLanPeers ? 'right-0.5' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-zinc-400 uppercase">Shared Stream Quality</span>
+                      <div className="flex items-center gap-2">
+                        {[
+                          { id: 'low', label: 'Low' },
+                          { id: 'med', label: 'Med' },
+                          { id: 'high', label: 'High' },
+                        ].map((q) => (
+                          <button
+                            key={q.id}
+                            onClick={() => setShareQuality(q.id as typeof shareQuality)}
+                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
+                              shareQuality === q.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
+                            }`}
+                          >
+                            {q.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 flex items-center justify-center shrink-0">
+                      <Share2 className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-semibold text-white">Your Invite Code</h4>
+                      <p className="text-xs text-zinc-400 truncate">Friends enter this code to request your library share</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 font-mono text-sm text-sky-300 tracking-wider">
+                      {inviteCode}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = `NV-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+                        setInviteCode(next);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition"
+                    >
+                      Rotate
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                  <h4 className="text-sm font-semibold text-white">Join a Peer Library</h4>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={peerJoinCode}
+                      onChange={(e) => setPeerJoinCode(e.target.value.toUpperCase())}
+                      placeholder="Enter peer invite code"
+                      className="flex-1 px-3 py-2.5 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder-zinc-500 font-mono focus:outline-none focus:border-sky-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!peerJoinCode.trim()) return;
+                        const code = peerJoinCode.trim();
+                        setPeerRequests((prev) => [
+                          {
+                            id: `req-out-${Date.now()}`,
+                            name: code,
+                            handle: code,
+                            initials: code.slice(0, 2),
+                            color: 'bg-gradient-to-tr from-sky-500 to-indigo-600',
+                            direction: 'outgoing',
+                            library: `Pending access for invite ${code}`,
+                            sentAt: 'Just now',
+                          },
+                          ...prev,
+                        ]);
+                        setPeerJoinFeedback(`Request sent for ${code}. Waiting for peer approval…`);
+                        setPeerJoinCode('');
+                        setTimeout(() => setPeerJoinFeedback(null), 4000);
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold transition shrink-0"
+                    >
+                      Request Access
+                    </button>
+                  </div>
+                  {peerJoinFeedback && (
+                    <p className="text-xs text-emerald-400 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {peerJoinFeedback}
+                    </p>
+                  )}
+                </div>
+
+                {/* Pending Requests */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold text-white">Pending Requests</h4>
+                    <span className="text-[11px] text-zinc-400 font-mono">
+                      {peerRequests.filter((r) => r.direction === 'incoming').length} incoming ·{' '}
+                      {peerRequests.filter((r) => r.direction === 'outgoing').length} outgoing
+                    </span>
+                  </div>
+
+                  {peerRequests.length === 0 ? (
+                    <div className="p-4 rounded-2xl bg-white/5 border border-dashed border-white/10 text-xs text-zinc-500 text-center">
+                      No pending peer requests
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2.5">
+                      {peerRequests.map((req) => (
+                        <div
+                          key={req.id}
+                          className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-10 h-10 rounded-xl ${req.color} text-white font-bold text-xs flex items-center justify-center shrink-0 shadow`}>
+                              {req.initials}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h5 className="text-sm font-semibold text-white truncate">{req.name}</h5>
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                    req.direction === 'incoming'
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                      : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                                  }`}
+                                >
+                                  {req.direction === 'incoming' ? 'Incoming' : 'Outgoing'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-zinc-400 truncate">
+                                {req.handle} · {req.library} · {req.sentAt}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            {req.direction === 'incoming' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setPeerRequests((prev) => prev.filter((r) => r.id !== req.id))}
+                                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-rose-500/20 text-zinc-300 hover:text-rose-300 text-[11px] font-semibold transition"
+                                >
+                                  Decline
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPeerRequests((prev) => prev.filter((r) => r.id !== req.id))}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-[11px] font-bold transition flex items-center gap-1"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  Accept
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setPeerRequests((prev) => prev.filter((r) => r.id !== req.id))}
+                                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-zinc-300 text-[11px] font-semibold transition"
+                              >
+                                Cancel Request
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add Peer */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-pink-500/10 via-white/5 to-sky-500/10 border border-pink-500/25 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-pink-500/20 border border-pink-500/35 text-pink-300 flex items-center justify-center shrink-0">
+                        <UserPlus className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-semibold text-white">Add Peer</h4>
+                        <p className="text-xs text-zinc-400 truncate">Connect a friend by name and peer invite code</p>
+                      </div>
+                    </div>
+                    {!isAddPeerOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddPeerOpen(true)}
+                        className="px-3.5 py-2 rounded-xl bg-pink-500 hover:bg-pink-400 text-white text-xs font-bold transition shrink-0 flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add Peer
+                      </button>
+                    )}
+                  </div>
+
+                  {isAddPeerOpen && (
+                    <div className="space-y-2.5 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={addPeerName}
+                          onChange={(e) => setAddPeerName(e.target.value)}
+                          placeholder="Peer display name"
+                          className="px-3 py-2.5 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-pink-400"
+                        />
+                        <input
+                          type="text"
+                          value={addPeerCode}
+                          onChange={(e) => setAddPeerCode(e.target.value.toUpperCase())}
+                          placeholder="PEER-XXXX-MESH"
+                          className="px-3 py-2.5 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder-zinc-500 font-mono focus:outline-none focus:border-pink-400"
+                        />
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddPeerOpen(false);
+                            setAddPeerName('');
+                            setAddPeerCode('');
+                            setAddPeerFeedback(null);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!addPeerName.trim() || !addPeerCode.trim()) return;
+                            setAddPeerFeedback(`Connecting to ${addPeerName.trim()} (${addPeerCode.trim()})…`);
+                            setTimeout(() => {
+                              setAddPeerFeedback(`Peer “${addPeerName.trim()}” added. Waiting for library handshake.`);
+                              setAddPeerName('');
+                              setAddPeerCode('');
+                              setTimeout(() => {
+                                setAddPeerFeedback(null);
+                                setIsAddPeerOpen(false);
+                              }, 2500);
+                            }, 800);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-pink-500 hover:bg-pink-400 text-white text-xs font-bold transition flex items-center gap-1.5"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          Connect Peer
+                        </button>
+                      </div>
+                      {addPeerFeedback && (
+                        <p className="text-xs text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          {addPeerFeedback}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-3 gap-3">
+                    <h4 className="text-sm font-semibold text-white">Connected Library Shares</h4>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] text-zinc-400 font-mono">
+                        {SHARED_PEER_LIBRARIES.filter((p) => p.status !== 'offline').length} online
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddPeerOpen(true);
+                          setActiveCategory('peers');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-pink-500/15 hover:bg-pink-500/25 text-pink-300 border border-pink-500/30 text-[10px] font-bold transition flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add Peer
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2.5">
+                    {SHARED_PEER_LIBRARIES.map((peer) => (
+                      <div
+                        key={peer.id}
+                        className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-10 h-10 rounded-xl ${peer.avatarColor} text-white font-bold text-xs flex items-center justify-center shrink-0 shadow`}>
+                            {peer.avatarInitials}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h5 className="text-sm font-semibold text-white truncate">{peer.name}</h5>
+                              <span
+                                className={`w-2 h-2 rounded-full shrink-0 ${
+                                  peer.status === 'offline' ? 'bg-zinc-500' : peer.status === 'streaming' ? 'bg-amber-400' : 'bg-emerald-400'
+                                }`}
+                              />
+                            </div>
+                            <p className="text-[11px] text-zinc-400 truncate">
+                              {peer.owner} · {peer.itemCount} titles · {peer.pingMs}ms · {peer.bandwidth}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {peer.status === 'offline' ? (
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-white/5 text-zinc-400 flex items-center gap-1">
+                              <WifiOff className="w-3 h-3" /> Offline
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 capitalize">
+                              {peer.status}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 8. Server & LAN (includes Nascent Streaming Engine) */}
+            {activeCategory === 'network' && (
+              <div className="flex flex-col gap-8">
+                {/* Nascent Streaming Engine */}
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Nascent Streaming Engine</h3>
                   <p className="text-xs text-zinc-400 mb-4">Hardware decoding, adaptive bitrate policies, and buffer cache.</p>
@@ -1277,77 +1984,9 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* 7. Storage & Drives */}
-            {activeCategory === 'storage' && (
-              <div className="flex flex-col gap-5">
-                <div>
-                  <h3 className="font-display font-bold text-lg text-white mb-1">Storage, Drives & Cache</h3>
-                  <p className="text-xs text-zinc-400 mb-4">Removable media detection, disk caches, and library maintenance.</p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-semibold text-white">Auto-Scan USB Drives</h4>
-                        <p className="text-xs text-zinc-400">Scan media automatically on drive insertion</p>
-                      </div>
-                      <button
-                        onClick={() => setAutoScanUsb(!autoScanUsb)}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${autoScanUsb ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${autoScanUsb ? 'right-0.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Library Auto-Refresh</span>
-                      <div className="flex items-center gap-2">
-                        {[
-                          { id: 'hourly', label: 'Every 6h' },
-                          { id: 'daily', label: 'Daily' },
-                          { id: 'manual', label: 'Manual' },
-                        ].map((f) => (
-                          <button
-                            key={f.id}
-                            onClick={() => setLibraryUpdateFreq(f.id as any)}
-                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                              libraryUpdateFreq === f.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                            }`}
-                          >
-                            {f.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 p-5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">Video Chunk & Artwork Cache</h4>
-                      <p className="text-xs text-zinc-400">
-                        {cacheCleared ? 'Cache is clear (0 MB)' : '1.42 GB stored across indexed media & posters'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setCacheCleared(true);
-                        setTimeout(() => setCacheCleared(false), 4000);
-                      }}
-                      className="px-5 py-2.5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all"
-                    >
-                      {cacheCleared ? 'Cache Cleared!' : 'Clear Stream Cache'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 8. Server & LAN */}
-            {activeCategory === 'network' && (
-              <div className="flex flex-col gap-5">
-                <div>
+                {/* Local Server & Network Diagnostics */}
+                <div className="pt-2 border-t border-white/10">
                   <h3 className="font-display font-bold text-lg text-white mb-1">Local Server & Network Diagnostics</h3>
                   <p className="text-xs text-zinc-400 mb-4">Port configuration, DLNA broadcast, and LAN peer synchronization.</p>
 
@@ -1401,98 +2040,31 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 9. Virtual TV Remote Controller */}
-            {activeCategory === 'remote' && (
-              <div className="flex flex-col gap-6">
-                <div>
-                  <h3 className="font-display font-bold text-lg text-white mb-1">Android TV Remote Controller</h3>
-                  <p className="text-xs text-zinc-400 mb-5">
-                    Navigate the interface using the virtual directional pad, media controls, and quick action shortcuts.
-                  </p>
-
-                  <div className="p-6 rounded-3xl bg-gradient-to-br from-sky-950/40 via-zinc-900/60 to-black/80 border border-sky-500/20 mb-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center shadow-lg">
-                        <Gamepad2 className="w-7 h-7" />
-                      </div>
-                      <div>
-                        <h4 className="text-base font-bold text-white mb-0.5">Virtual D-Pad Remote Overlay</h4>
-                        <p className="text-xs text-zinc-400">
-                          {isRemoteOpen 
-                            ? 'Virtual remote is currently active on screen.' 
-                            : 'Open floating Android TV remote for directional browsing & playback.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => onToggleRemote?.()}
-                      className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-lg flex items-center gap-2 focus:ring-2 focus:ring-sky-400 focus:outline-none ${
-                        isRemoteOpen
-                          ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
-                          : 'bg-sky-500 hover:bg-sky-400 text-black shadow-sky-500/30'
-                      }`}
-                    >
-                      <Gamepad2 className="w-4 h-4" />
-                      <span>{isRemoteOpen ? 'Close Remote Overlay' : 'Launch TV Remote'}</span>
-                    </button>
-                  </div>
-
-                  {/* Remote Features & Mapping Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Remote Keyboard Shortcuts</h4>
-                      <div className="flex flex-col gap-2 text-xs">
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">D-Pad Up / Down</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">↑ / ↓ Scroll</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">D-Pad Left / Right</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">← / → Carousel</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Center OK / Select</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Enter / Space</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-300">Back / Return</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Esc / Backspace</kbd>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Controller Specs & Connectivity</h4>
-                      <div className="flex flex-col gap-2 text-xs">
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Profile Protocol</span>
-                          <span className="font-semibold text-zinc-200">Android TV D-Pad HID</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Haptic Feedback</span>
-                          <span className="font-semibold text-emerald-400">Enabled (Vibrate)</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Repeat Delay</span>
-                          <span className="font-mono text-zinc-300">180 ms</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-300">Status</span>
-                          <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            Connected
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
+
+      <TvAddonPaywallModal
+        isOpen={isPluginPaywallOpen && activeCategory === 'plugins' && !pluginsUnlocked}
+        onClose={() => {
+          setIsPluginPaywallOpen(false);
+          if (!addonPaywall.isUnlocked()) {
+            setActiveCategory('profile');
+          }
+        }}
+        onUnlockedSuccess={() => {
+          setPluginsUnlocked(true);
+          setIsPluginPaywallOpen(false);
+          try {
+            localStorage.setItem('nascent-plugins-unlocked', '1');
+          } catch {
+            /* ignore */
+          }
+          setPluginFeedback('VIP Pass unlocked — Plugins & Community Addons are now available.');
+          setTimeout(() => setPluginFeedback(null), 3200);
+        }}
+        targetAddonName="Plugins & Community Addons"
+      />
     </div>
   );
 };

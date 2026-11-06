@@ -405,6 +405,11 @@ export default function App() {
   // Left sidebar & Peer node state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null);
+  const [selectedLibraryFolder, setSelectedLibraryFolder] = useState<{
+    id: string;
+    name: string;
+    path: string;
+  } | null>(null);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [connectCodeInput, setConnectCodeInput] = useState('');
   const [connectStatusMsg, setConnectStatusMsg] = useState<string | null>(null);
@@ -505,6 +510,13 @@ export default function App() {
   const [isVoiceSearchRequested, setIsVoiceSearchRequested] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPluginModalOpen, setIsPluginModalOpen] = useState(false);
+  const [pluginsActivated, setPluginsActivated] = useState(() => {
+    try {
+      return localStorage.getItem('nascent-plugins-activated') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [isRemoteOpen, setIsRemoteOpen] = useState(false);
   const [isStreamingHUDOpen, setIsStreamingHUDOpen] = useState(false);
   const [streamSelectorMovie, setStreamSelectorMovie] = useState<FeaturedMovie | null>(null);
@@ -848,6 +860,7 @@ export default function App() {
         onOpenStreamingHUD={() => setIsStreamingHUDOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenPlugins={() => setIsPluginModalOpen(true)}
+        showPluginsButton={pluginsActivated}
         onToggleMenu={handleToggleNavigationMenu}
         activeMediaTitle={activeTab === 'shows' ? currentFeaturedShow.title : currentFeatured.title}
         isSearchOpen={isSearchOpen}
@@ -862,10 +875,12 @@ export default function App() {
             onTabChange={(tab) => {
               setActiveTab(tab);
               if (tab !== 'shared-libraries') setSelectedPeerId(null);
+              if (tab === 'shared-libraries') setSelectedLibraryFolder(null);
             }}
             selectedPeerId={selectedPeerId}
             onSelectPeer={(peerId) => {
               setSelectedPeerId(peerId);
+              setSelectedLibraryFolder(null);
               setActiveTab('shared-libraries');
             }}
             peers={SHARED_PEER_LIBRARIES.map((p) => ({
@@ -882,9 +897,29 @@ export default function App() {
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
             onOpenConnectModal={() => setIsConnectModalOpen(true)}
-            onOpenPlugins={() => setIsPluginModalOpen(true)}
             localFilesCount={LOCAL_MEDIA_FILES.length}
+            selectedFolderId={selectedLibraryFolder?.id ?? null}
+            onSelectFolder={(folder) => {
+              if (!folder) {
+                setSelectedLibraryFolder(null);
+                return;
+              }
+              setSelectedLibraryFolder({
+                id: folder.id,
+                name: folder.name,
+                path: folder.path,
+              });
+              setSelectedPeerId(null);
+              setActiveTab('local-media');
+            }}
             onAddFolderSource={(folder) => {
+              setSelectedLibraryFolder({
+                id: folder.id,
+                name: folder.name,
+                path: folder.path,
+              });
+              setSelectedPeerId(null);
+              setActiveTab('local-media');
               setScanFeedback(`Imported local system folder "${folder.name}" (${folder.path}) as active media source.`);
               setTimeout(() => setScanFeedback(null), 4500);
             }}
@@ -1116,12 +1151,15 @@ export default function App() {
             selectedPeerId={selectedPeerId}
             onSelectPeer={(peerId) => {
               setSelectedPeerId(peerId);
+              setSelectedLibraryFolder(null);
               if (peerId) {
                 setActiveTab('shared-libraries');
               } else {
                 setActiveTab('local-media');
               }
             }}
+            selectedFolder={selectedLibraryFolder}
+            onClearFolder={() => setSelectedLibraryFolder(null)}
           />
         )}
 
@@ -1332,6 +1370,15 @@ export default function App() {
         onToggleRemote={() => setIsRemoteOpen((prev) => !prev)}
         isRemoteOpen={isRemoteOpen}
         onOpenPlugins={() => setIsPluginModalOpen(true)}
+        pluginsActivated={pluginsActivated}
+        onPluginsActivatedChange={(activated) => {
+          setPluginsActivated(activated);
+          try {
+            localStorage.setItem('nascent-plugins-activated', activated ? '1' : '0');
+          } catch {
+            /* ignore */
+          }
+        }}
         eqGains={eqGains}
         onEqChange={handleEqChange}
         audioPreset={audioPreset}

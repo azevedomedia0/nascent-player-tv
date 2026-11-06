@@ -12,7 +12,8 @@ import {
   Users,
   Bell,
   Menu,
-  Lock
+  Lock,
+  Puzzle
 } from 'lucide-react';
 import { AppLogo } from '../AppLogo';
 
@@ -27,6 +28,7 @@ interface TvTopNavProps {
   onOpenStreamingHUD: () => void;
   onOpenSettings?: () => void;
   onOpenPlugins?: () => void;
+  showPluginsButton?: boolean;
   onToggleMenu?: () => void;
   activeMediaTitle?: string;
   isEngineActive?: boolean;
@@ -41,6 +43,8 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
   isRemoteOpen,
   onOpenStreamingHUD,
   onOpenSettings,
+  onOpenPlugins,
+  showPluginsButton = false,
   onToggleMenu,
   activeMediaTitle,
   isEngineActive = true,
@@ -253,6 +257,19 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
             </div>
           )}
         </div>
+
+        {/* Plugins shortcut — only when Activate Plugins is on */}
+        {showPluginsButton && onOpenPlugins && (
+          <button
+            type="button"
+            onClick={onOpenPlugins}
+            className="relative p-2.5 rounded-full text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400"
+            title="Plugins & Community Addons"
+            aria-label="Plugins & Community Addons"
+          >
+            <Puzzle className="w-5 h-5 lg:w-[22px] lg:h-[22px]" />
+          </button>
+        )}
 
         {/* User Profile Avatar */}
         <div 

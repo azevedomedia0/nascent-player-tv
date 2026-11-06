@@ -83,13 +83,25 @@ export const ACTOR_HEADSHOTS: Record<string, string> = {
   "Matt Damon": "https://image.tmdb.org/t/p/w185/elSlNg0mKM9NX784vW0M5x82twj.jpg"
 };
 
-export function getActorHeadshot(name: string): string {
+function isUsableActorPhoto(url?: string | null): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  // Known-broken / placeholder sources — force a live IMDb refetch
+  if (lower.includes('images.metahub.space/cast/')) return false;
+  if (lower.includes('ui-avatars.com')) return false;
+  // Prefer live IMDb / Amazon media assets over stale static TMDB stubs
+  if (lower.includes('media-amazon.com') || lower.includes('imdb.com')) return true;
+  if (lower.includes('image.tmdb.org')) return false;
+  return true;
+}
+
+export function getActorHeadshot(name: string): string | undefined {
   if (ACTOR_HEADSHOTS[name]) return ACTOR_HEADSHOTS[name];
   const match = Object.keys(ACTOR_HEADSHOTS).find(
     k => k.toLowerCase() === name.toLowerCase() || name.toLowerCase().includes(k.toLowerCase())
   );
   if (match) return ACTOR_HEADSHOTS[match];
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0284c7&color=fff&size=200&bold=true`;
+  return undefined;
 }
 
 export function enrichCastArray(cast: any[]): CastMember[] {
@@ -103,13 +115,48 @@ export function enrichCastArray(cast: any[]): CastMember[] {
       };
     }
     const name = c.name || "Actor";
+    const candidate = c.photoUrl || c.image || getActorHeadshot(name);
     return {
       name,
       role: c.role || c.character || "Starring",
       character: c.character || c.role || "Starring",
-      photoUrl: c.photoUrl || c.image || getActorHeadshot(name)
+      photoUrl: isUsableActorPhoto(candidate) ? candidate : undefined
     };
   });
+}
+
+/**
+ * Always resolve live IMDb headshots for cast members missing usable photos.
+ */
+export async function fetchImdbCastImages(cast: CastMember[]): Promise<CastMember[]> {
+  if (!Array.isArray(cast) || cast.length === 0) return [];
+
+  const needsFetch = cast.filter((c) => c?.name && !isUsableActorPhoto(c.photoUrl));
+  if (needsFetch.length === 0) return cast;
+
+  try {
+    const res = await fetch('/api/imdb/cast-images', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ names: needsFetch.map((c) => c.name) }),
+    });
+    if (!res.ok) return cast;
+    const data = await res.json();
+    const images: Record<string, string> = data.images || {};
+
+    return cast.map((member) => {
+      if (isUsableActorPhoto(member.photoUrl)) return member;
+      const live =
+        images[member.name] ||
+        Object.entries(images).find(
+          ([key]) => key.toLowerCase() === member.name.toLowerCase()
+        )?.[1];
+      return live ? { ...member, photoUrl: live } : { ...member, photoUrl: undefined };
+    });
+  } catch (err) {
+    console.warn('Failed fetching IMDb cast images:', err);
+    return cast;
+  }
 }
 
 export interface ImdbSearchResult {
@@ -176,7 +223,7 @@ export async function fetchImdbMetadata(titleOrId: string, type?: 'movie' | 'ser
     const data = await res.json();
     const meta: ImdbMetadata = data.metadata || data;
     if (meta && Array.isArray(meta.cast)) {
-      meta.cast = enrichCastArray(meta.cast);
+      meta.cast = await fetchImdbCastImages(enrichCastArray(meta.cast));
     }
     return meta;
   } catch (err) {

@@ -8,7 +8,8 @@ import {
   Share2, 
   Wifi, 
   ChevronLeft, 
-  ChevronRight, 
+  ChevronRight,
+  ChevronDown,
   Plus, 
   Folder, 
   FolderPlus,
@@ -20,14 +21,10 @@ import {
   Usb,
   Network,
   Server,
-  X,
-  Puzzle,
-  Sparkles,
-  Lock
+  X
 } from 'lucide-react';
 import { TvTab } from './TvTopNav';
 import { AppLogo } from '../AppLogo';
-import { addonPaywall } from '../../lib/plugins/addonPaywall';
 
 export interface LocalFolderSource {
   id: string;
@@ -59,9 +56,10 @@ interface TvSidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onOpenConnectModal: () => void;
-  onOpenPlugins?: () => void;
   localFilesCount?: number;
   onAddFolderSource?: (folder: LocalFolderSource) => void;
+  selectedFolderId?: string | null;
+  onSelectFolder?: (folder: LocalFolderSource | null) => void;
 }
 
 export const TvSidebar: React.FC<TvSidebarProps> = ({
@@ -73,14 +71,24 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
   isCollapsed,
   onToggleCollapse,
   onOpenConnectModal,
-  onOpenPlugins,
   localFilesCount: _localFilesCount = 3,
   onAddFolderSource,
+  selectedFolderId = null,
+  onSelectFolder,
 }) => {
   const isLocalActive = activeTab === 'local-media' || activeTab === 'library';
   const isSharedActive = activeTab === 'shared-libraries';
 
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState({
+    local: true,
+    shared: true,
+    removable: true,
+    network: true,
+  });
+  const toggleSection = (key: keyof typeof expandedSections) => {
+    setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
   const [isAddShareOpen, setIsAddShareOpen] = useState(false);
   const [newShareName, setNewShareName] = useState('');
   const [newShareProtocol, setNewShareProtocol] = useState<'SMB' | 'NFS' | 'DLNA' | 'WebDAV'>('SMB');
@@ -93,17 +101,17 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
       id: 'f-1',
       name: '4K Masters & Remuxes',
       path: '/mnt/nvme0n1/media/movies',
-      fileCount: 3,
+      fileCount: 5,
       type: 'Movies',
       addedAt: 'Internal NVMe',
     },
     {
       id: 'f-2',
       name: 'Cinema Library',
-      path: '/Volumes/Media/Cinema',
-      fileCount: 12,
+      path: '/storage/usbotg_samsung',
+      fileCount: 1,
       type: 'Movies & TV',
-      addedAt: 'Direct Storage',
+      addedAt: 'USB OTG',
     },
   ]);
   const [isAddFolderOpen, setIsAddFolderOpen] = useState(false);
@@ -130,6 +138,8 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
       };
       
       setImportedFolders((prev) => [...prev, newFolder]);
+      setActiveSourceId(newFolder.id);
+      onSelectFolder?.(newFolder);
       if (onAddFolderSource) {
         onAddFolderSource(newFolder);
       }
@@ -155,6 +165,8 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
       addedAt: 'Direct Mount',
     };
     setImportedFolders((prev) => [...prev, newFolder]);
+    setActiveSourceId(newFolder.id);
+    onSelectFolder?.(newFolder);
     if (onAddFolderSource) {
       onAddFolderSource(newFolder);
     }
@@ -184,7 +196,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
       mountPoint: '/storage/usbotg_samsung',
       freeSpace: '640 GB free',
       totalSpace: '1 TB',
-      itemCount: 8,
+      itemCount: 1,
       status: 'mounted' as const,
     },
   ]);
@@ -266,14 +278,18 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
     <>
     <aside 
       onKeyDown={handleSidebarKeyDown}
-      className={`relative z-30 flex-shrink-0 transition-all duration-300 ease-in-out select-none border-r border-white/10 bg-transparent backdrop-blur-md flex flex-col ${
-        isCollapsed ? 'w-20 items-center' : 'w-72 lg:w-80'
+      className={`z-30 flex-shrink-0 transition-all duration-300 ease-in-out select-none border-r border-white/10 bg-transparent backdrop-blur-md flex flex-col ${
+        isCollapsed
+          ? 'sticky top-0 self-start h-dvh w-20 items-center'
+          : 'relative w-72 lg:w-80'
       }`}
       aria-label="Media Sources Sidebar"
     >
       {/* Top Header & Navigation */}
-      <div className={`flex-1 w-full flex flex-col transition-all ${
-        isCollapsed ? 'items-center justify-center py-6 px-0 gap-4 overflow-hidden' : 'p-4 gap-6 overflow-y-auto no-scrollbar'
+      <div className={`w-full flex flex-col transition-all ${
+        isCollapsed
+          ? 'h-full items-center justify-center py-6 px-0 gap-4 overflow-hidden'
+          : 'flex-1 p-4 gap-6 overflow-y-auto no-scrollbar'
       }`}>
         {/* Brand + collapse control */}
         <div className={`flex items-center gap-2 ${isCollapsed ? 'justify-center w-full px-0' : 'justify-between px-1'}`}>
@@ -306,39 +322,55 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
         <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-2.5 w-full' : 'gap-2'}`}>
           {/* 1. LOCAL MEDIA FILES */}
           <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center w-full' : ''}`}>
-            <button
-              onClick={() => {
-                onTabChange('local-media');
-                onSelectPeer(null);
-              }}
-              className={`group relative flex items-center ${
-                isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'w-full justify-between px-3.5 py-3'
-              } rounded-2xl font-medium text-sm focus:outline-none ${
-                isLocalActive
-                  ? 'text-white font-semibold'
-                  : 'text-zinc-300 hover:text-white'
-              }`}
-              title="Local Media Files (Direct Storage)"
-            >
-              <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
-                <div className={`flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
-                  isLocalActive 
-                    ? 'bg-sky-500 text-black shadow-md shadow-sky-500/30' 
-                    : 'bg-white/10 text-sky-400'
-                }`}>
-                  <HardDrive className="w-5 h-5" />
-                </div>
-                {!isCollapsed && (
-                  <div className="flex flex-col text-left truncate">
-                    <span className="truncate">Local Media Files</span>
-                    <span className="text-[11px] text-zinc-400 font-normal">Internal NVMe & LAN</span>
+            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-0.5'}`}>
+              <button
+                onClick={() => {
+                  onTabChange('local-media');
+                  onSelectPeer(null);
+                  onSelectFolder?.(null);
+                  setActiveSourceId(null);
+                  if (!isCollapsed && !expandedSections.local) toggleSection('local');
+                }}
+                className={`group relative flex items-center ${
+                  isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'flex-1 justify-between px-3.5 py-3'
+                } rounded-2xl font-medium text-sm focus:outline-none ${
+                  isLocalActive
+                    ? 'text-white font-semibold'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+                title="Local Media Files (Direct Storage)"
+              >
+                <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
+                  <div className={`flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
+                    isLocalActive 
+                      ? 'bg-sky-500 text-black shadow-md shadow-sky-500/30' 
+                      : 'bg-white/10 text-sky-400'
+                  }`}>
+                    <HardDrive className="w-5 h-5" />
                   </div>
-                )}
-              </div>
-            </button>
+                  {!isCollapsed && (
+                    <div className="flex flex-col text-left truncate">
+                      <span className="truncate">Local Media Files</span>
+                      <span className="text-[11px] text-zinc-400 font-normal">Internal NVMe & LAN</span>
+                    </div>
+                  )}
+                </div>
+              </button>
+              {!isCollapsed && (
+                <button
+                  type="button"
+                  aria-label={expandedSections.local ? 'Collapse Local Media Files' : 'Expand Local Media Files'}
+                  aria-expanded={expandedSections.local}
+                  onClick={() => toggleSection('local')}
+                  className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-white/10 transition shrink-0"
+                >
+                  <ChevronDown className={`w-4 h-4 transition-transform ${expandedSections.local ? '' : '-rotate-90'}`} />
+                </button>
+              )}
+            </div>
 
             {/* Expanded Local Folders Sub-list */}
-            {!isCollapsed && (
+            {!isCollapsed && expandedSections.local && (
               <div className="pl-4 pr-1 flex flex-col gap-1 border-l-2 border-white/5 ml-5 mt-1.5">
                 <div className="flex items-center justify-between px-2 py-1">
                   <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
@@ -346,29 +378,39 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   </span>
                 </div>
 
-                {importedFolders.map((folder) => (
+                {importedFolders.map((folder) => {
+                  const isFolderSelected = selectedFolderId === folder.id || activeSourceId === folder.id;
+                  return (
                   <button
                     key={folder.id}
                     type="button"
                     onClick={() => {
                       onTabChange('local-media');
                       onSelectPeer(null);
+                      setActiveSourceId(folder.id);
+                      onSelectFolder?.(folder);
                     }}
-                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs text-zinc-300 hover:text-white hover:bg-white/5 focus:ring-2 focus:ring-sky-400 focus:outline-none focus:bg-white/10 transition-all text-left cursor-pointer group"
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-all text-left cursor-pointer group focus:ring-2 focus:ring-sky-400 focus:outline-none ${
+                      isFolderSelected
+                        ? 'bg-sky-500/15 text-white border border-sky-400/40'
+                        : 'text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent'
+                    }`}
                     title={`${folder.name} (${folder.path})`}
+                    aria-pressed={isFolderSelected}
                   >
                     <div className="flex items-center gap-2 truncate min-w-0">
-                      <Folder className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                      <Folder className={`w-3.5 h-3.5 flex-shrink-0 ${isFolderSelected ? 'text-sky-300' : 'text-sky-400'}`} />
                       <div className="flex flex-col truncate">
-                        <span className="truncate text-xs font-medium text-zinc-200 group-hover:text-white">{folder.name}</span>
+                        <span className={`truncate text-xs font-medium ${isFolderSelected ? 'text-white' : 'text-zinc-200 group-hover:text-white'}`}>{folder.name}</span>
                         <span className="text-[10px] text-zinc-500 font-mono truncate">{folder.path}</span>
                       </div>
                     </div>
-                    <span className="text-[10px] text-zinc-400 font-mono ml-1 flex-shrink-0">
+                    <span className={`text-[10px] font-mono ml-1 flex-shrink-0 ${isFolderSelected ? 'text-sky-300' : 'text-zinc-400'}`}>
                       {folder.fileCount}
                     </span>
                   </button>
-                ))}
+                  );
+                })}
 
                 <button
                   type="button"
@@ -384,98 +426,156 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
 
           {/* 2. SHARED LIBRARIES FROM OTHER USERS */}
           <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center w-full mt-0' : 'gap-1.5 mt-1'}`}>
-            <button
-              onClick={() => {
-                onTabChange('shared-libraries');
-                onSelectPeer(null);
-              }}
-              className={`group relative flex items-center ${
-                isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'w-full justify-between px-3.5 py-3'
-              } rounded-2xl font-medium text-sm focus:outline-none ${
-                isSharedActive && !selectedPeerId
-                  ? 'text-white font-semibold'
-                  : 'text-zinc-300 hover:text-white'
-              }`}
-              title="Shared Libraries from other users"
-            >
-              <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
-                <div className={`relative flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
+            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-0.5'}`}>
+              <button
+                onClick={() => {
+                  onTabChange('shared-libraries');
+                  onSelectPeer(null);
+                  onSelectFolder?.(null);
+                  setActiveSourceId(null);
+                  if (!isCollapsed && !expandedSections.shared) toggleSection('shared');
+                }}
+                className={`group relative flex items-center ${
+                  isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'flex-1 justify-between px-3.5 py-3'
+                } rounded-2xl font-medium text-sm focus:outline-none ${
                   isSharedActive && !selectedPeerId
-                    ? 'bg-pink-500 text-white' 
-                    : 'bg-white/10 text-pink-400'
-                }`}>
-                  <Users className="w-5 h-5" />
-                  {/* Live sync dot */}
-                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                  </span>
-                </div>
-                {!isCollapsed && (
-                  <div className="flex flex-col text-left truncate">
-                    <span className="truncate">Shared Libraries</span>
-                    <span className="text-[11px] text-zinc-400 font-normal">From other users</span>
+                    ? 'text-white font-semibold'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+                title="Shared Libraries from other users"
+              >
+                <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
+                  <div className={`relative flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
+                    isSharedActive && !selectedPeerId
+                      ? 'bg-pink-500 text-white' 
+                      : 'bg-white/10 text-pink-400'
+                  }`}>
+                    <Users className="w-5 h-5" />
+                    {/* Live sync dot */}
+                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
                   </div>
-                )}
-              </div>
-            </button>
+                  {!isCollapsed && (
+                    <div className="flex flex-col text-left truncate">
+                      <span className="truncate">Shared Libraries</span>
+                      <span className="text-[11px] text-zinc-400 font-normal">From other users</span>
+                    </div>
+                  )}
+                </div>
+              </button>
+              {!isCollapsed && (
+                <button
+                  type="button"
+                  aria-label={expandedSections.shared ? 'Collapse Shared Libraries' : 'Expand Shared Libraries'}
+                  aria-expanded={expandedSections.shared}
+                  onClick={() => toggleSection('shared')}
+                  className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-white/10 transition shrink-0"
+                >
+                  <ChevronDown className={`w-4 h-4 transition-transform ${expandedSections.shared ? '' : '-rotate-90'}`} />
+                </button>
+              )}
+            </div>
 
             {/* Expanded Peer Libraries Sub-list */}
-            {!isCollapsed && (
-              <div className="pl-4 pr-1 flex flex-col gap-1 border-l-2 border-white/5 ml-5 mt-1">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-                    Connected Peers
-                  </span>
-                </div>
+            {!isCollapsed && expandedSections.shared && (() => {
+              const connectedPeers = peers.filter((p) => p.status === 'online' || p.status === 'streaming');
+              const disconnectedPeers = peers.filter((p) => p.status === 'offline');
 
-                {peers.map((peer) => {
-                  const isPeerSelected = isSharedActive && selectedPeerId === peer.id;
-                  return (
-                    <button
-                      key={peer.id}
-                      onClick={() => {
-                        onTabChange('shared-libraries');
-                        onSelectPeer(peer.id);
-                      }}
-                      className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-all text-left focus:outline-none ${
-                        isPeerSelected
+              const renderPeerButton = (peer: SharedPeerSummary, disconnected = false) => {
+                const isPeerSelected = isSharedActive && selectedPeerId === peer.id;
+                return (
+                  <button
+                    key={peer.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectFolder?.(null);
+                      setActiveSourceId(null);
+                      onTabChange('shared-libraries');
+                      onSelectPeer(peer.id);
+                    }}
+                    className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-all text-left focus:outline-none cursor-pointer ${
+                      disconnected
+                        ? isPeerSelected
+                          ? 'bg-white/5 text-zinc-400 border border-white/10 font-semibold opacity-70'
+                          : 'text-zinc-500 hover:text-zinc-400 hover:bg-white/[0.03] border border-transparent opacity-55'
+                        : isPeerSelected
                           ? 'bg-pink-500/20 text-white border border-pink-400/40 font-semibold'
-                          : 'text-zinc-300 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate min-w-0">
-                        <div className={`w-6 h-6 rounded-lg ${peer.avatarColor} text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm`}>
-                          {peer.avatarInitials}
-                        </div>
-                        <div className="flex flex-col truncate">
-                          <span className="truncate">{peer.name}</span>
-                          <span className="text-[10px] text-zinc-400 truncate">{peer.owner}</span>
-                        </div>
+                          : 'text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent'
+                    }`}
+                    aria-pressed={isPeerSelected}
+                  >
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      <div
+                        className={`w-6 h-6 rounded-lg ${peer.avatarColor} text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm ${
+                          disconnected ? 'grayscale' : ''
+                        }`}
+                      >
+                        {peer.avatarInitials}
                       </div>
-
-                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          peer.status === 'online' ? 'bg-emerald-400' : 'bg-zinc-600'
-                        }`} />
-                        <span className="text-[10px] text-zinc-400 font-mono">
-                          {peer.itemCount}
+                      <div className="flex flex-col truncate">
+                        <span className="truncate">{peer.name}</span>
+                        <span className={`text-[10px] truncate ${disconnected ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                          {peer.owner}
                         </span>
                       </div>
-                    </button>
-                  );
-                })}
+                    </div>
 
-                {/* Quick Add Friend Library Button */}
-                <button
-                  onClick={onOpenConnectModal}
-                  className="mt-1 flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-white/15 hover:border-pink-400/50 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-pink-300 text-xs transition-all text-left"
-                >
-                  <Plus className="w-3.5 h-3.5 text-pink-400" />
-                  <span>+ Connect Shared Library</span>
-                </button>
-              </div>
-            )}
+                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          disconnected
+                            ? 'bg-zinc-600'
+                            : peer.status === 'streaming'
+                              ? 'bg-amber-400'
+                              : 'bg-emerald-400'
+                        }`}
+                      />
+                      <span className={`text-[10px] font-mono ${disconnected ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                        {peer.itemCount}
+                      </span>
+                    </div>
+                  </button>
+                );
+              };
+
+              return (
+                <div className="pl-4 pr-1 flex flex-col gap-1 border-l-2 border-white/5 ml-5 mt-1">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                      Connected Peers
+                    </span>
+                  </div>
+
+                  {connectedPeers.length > 0 ? (
+                    connectedPeers.map((peer) => renderPeerButton(peer))
+                  ) : (
+                    <p className="px-2.5 py-1.5 text-[10px] text-zinc-500 italic">No peers online</p>
+                  )}
+
+                  {disconnectedPeers.length > 0 && (
+                    <>
+                      <div className="flex items-center justify-between px-2 py-1 mt-2">
+                        <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">
+                          Disconnected Peers
+                        </span>
+                      </div>
+                      {disconnectedPeers.map((peer) => renderPeerButton(peer, true))}
+                    </>
+                  )}
+
+                  {/* Quick Add Friend Library Button */}
+                  <button
+                    onClick={onOpenConnectModal}
+                    className="mt-1 flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-white/15 hover:border-pink-400/50 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-pink-300 text-xs transition-all text-left"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-pink-400" />
+                    <span>+ Connect Shared Library</span>
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -488,20 +588,37 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           {/* Sub-section 1: Removable Devices (USB / OTG / External SSD) */}
           <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-1.5 w-full' : 'gap-1'}`}>
             {!isCollapsed && (
-              <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-2 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
-                Removable Devices
-              </span>
+              <button
+                type="button"
+                onClick={() => toggleSection('removable')}
+                className="w-full text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-2 py-1 flex items-center justify-between hover:text-zinc-300 transition"
+                aria-expanded={expandedSections.removable}
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+                  Removable Devices
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expandedSections.removable ? '' : '-rotate-90'}`} />
+              </button>
             )}
-            {removableDevices.map((dev) => {
-              const isSelected = activeSourceId === dev.id;
+            {(isCollapsed || expandedSections.removable) && removableDevices.map((dev) => {
+              const isSelected = selectedFolderId === dev.id || activeSourceId === dev.id;
               return (
                 <button
                   key={dev.id}
+                  type="button"
                   onClick={() => {
                     setActiveSourceId(dev.id);
                     onTabChange('local-media');
                     onSelectPeer(null);
+                    onSelectFolder?.({
+                      id: dev.id,
+                      name: dev.name,
+                      path: dev.mountPoint,
+                      fileCount: dev.itemCount,
+                      type: 'Removable',
+                      addedAt: 'USB / OTG',
+                    });
                   }}
                   className={`group flex items-center ${
                     isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'justify-between px-3 py-2'
@@ -511,6 +628,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                       : 'text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent'
                   }`}
                   title={`${dev.name} (${dev.freeSpace} • ${dev.itemCount} files)`}
+                  aria-pressed={isSelected}
                 >
                   <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
                     <div className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${
@@ -546,14 +664,20 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           {/* Sub-section 2: Network Shares (SMB / NFS / DLNA) */}
           <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-1.5 w-full' : 'gap-1 mt-1'}`}>
             {!isCollapsed && (
-              <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => toggleSection('network')}
+                className="w-full text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-2 py-1 flex items-center justify-between hover:text-zinc-300 transition"
+                aria-expanded={expandedSections.network}
+              >
+                <span className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
                   Network Shares
                 </span>
-              </div>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expandedSections.network ? '' : '-rotate-90'}`} />
+              </button>
             )}
-            {networkShares.map((share) => {
+            {(isCollapsed || expandedSections.network) && networkShares.map((share) => {
               const isSelected = activeSourceId === share.id;
               return (
                 <button
@@ -562,6 +686,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                     setActiveSourceId(share.id);
                     onTabChange('local-media');
                     onSelectPeer(null);
+                    onSelectFolder?.(null);
                   }}
                   className={`group flex items-center ${
                     isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'justify-between px-3 py-2'
@@ -602,7 +727,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
               );
             })}
 
-            {!isCollapsed && (
+            {!isCollapsed && expandedSections.network && (
               <button
                 onClick={() => setIsAddShareOpen(true)}
                 className="mt-1 flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed border-white/15 hover:border-orange-400/50 bg-white/5 hover:bg-orange-500/10 text-zinc-300 hover:text-orange-300 text-xs transition-all text-left cursor-pointer"
@@ -614,41 +739,6 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           </div>
         </div>
 
-        {/* Community Addons & Plugins Entrypoint */}
-        {onOpenPlugins && (
-          <div className={`mt-auto pt-2 border-t border-white/10 ${isCollapsed ? 'w-full flex justify-center' : ''}`}>
-            <button
-              onClick={onOpenPlugins}
-              className={`group flex items-center ${
-                isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'w-full justify-between px-3.5 py-2.5'
-              } rounded-2xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 transition-all text-left focus:outline-none cursor-pointer`}
-              title="Community Plugins & Addons (Stremio Protocol)"
-            >
-              <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 group-hover:scale-105 transition-transform shrink-0">
-                  <Puzzle className="w-5 h-5" />
-                </div>
-                {!isCollapsed && (
-                  <div className="flex flex-col truncate min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-white text-xs truncate">Community Addons</span>
-                      {addonPaywall.isUnlocked() ? (
-                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-pink-500/25 text-pink-300 border border-pink-500/40 shrink-0 flex items-center gap-0.5">
-                          <Sparkles className="w-2.5 h-2.5 text-amber-300" /> VIP
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0 flex items-center gap-0.5">
-                          <Lock className="w-2.5 h-2.5" /> Pass
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-indigo-300/70 font-normal truncate">Stremio Protocol v3</span>
-                  </div>
-                )}
-              </div>
-            </button>
-          </div>
-        )}
       </div>
     </aside>
 

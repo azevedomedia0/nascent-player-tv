@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react';
 import { 
   Search, 
   X, 
@@ -68,11 +68,13 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
   initialVoiceActive = false,
 }) => {
   const [query, setQuery] = useState('');
-  const [selectedType, setSelectedType] = useState<MediaTypeFilter>('Movie');
+  const deferredQuery = useDeferredValue(query);
+  const [selectedType, setSelectedType] = useState<MediaTypeFilter>('All');
   const [selectedSort, setSelectedSort] = useState<SortOption>('Popular');
   const [selectedGenre, setSelectedGenre] = useState<string>('All Genres');
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformFilter>('All Platforms');
   const [searchLocalOnly, setSearchLocalOnly] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Active open dropdown
   const [openDropdown, setOpenDropdown] = useState<'type' | 'sort' | 'genre' | 'platform' | null>(null);
@@ -249,6 +251,8 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
     } else {
       stopVoiceSearch();
       setQuery('');
+      setShowSuggestions(false);
+      setSelectedType('All');
       setIsCreatingList(false);
       setOpenDropdown(null);
     }
@@ -323,29 +327,38 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
     return [...locals, ...shared];
   }, []);
 
-  const filteredMovies = useMemo(() => {
-    const isSearching =
-      query.trim().length > 0 ||
-      selectedGenre !== 'All Genres' ||
-      selectedType !== 'Movie' ||
-      selectedSort !== 'Popular' ||
-      selectedPlatform !== 'All Platforms' ||
-      searchLocalOnly;
+  const matchesQuery = (m: FeaturedMovie, q: string) => {
+    if (!q) return true;
+    const castNames = (m.cast || []).map((c) => (typeof c === 'string' ? c : c.name)).join(' ');
+    return (
+      m.title.toLowerCase().includes(q) ||
+      (m.director && m.director.toLowerCase().includes(q)) ||
+      (m.genres && m.genres.some((g) => g.toLowerCase().includes(q))) ||
+      castNames.toLowerCase().includes(q) ||
+      (m.summary && m.summary.toLowerCase().includes(q))
+    );
+  };
 
-    if (!isSearching && !query.trim()) return [];
+  // Stremio-style live autocomplete suggestions under the search bar
+  const searchSuggestions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 1) return [];
+    const source = searchLocalOnly ? localLibraryMovies : movies;
+    return source
+      .filter((m) => matchesQuery(m, q))
+      .slice(0, 8);
+  }, [query, movies, localLibraryMovies, searchLocalOnly]);
+
+  const filteredMovies = useMemo(() => {
+    // Prefer live `query` so the results pane updates immediately while typing
+    const activeQuery = (query.trim() || deferredQuery.trim());
+    if (!activeQuery) return [];
 
     const baseSource = searchLocalOnly ? localLibraryMovies : movies;
 
     let list = baseSource.filter((m) => {
-      // 1. Query match
-      if (query.trim()) {
-        const q = query.toLowerCase();
-        const matches =
-          m.title.toLowerCase().includes(q) ||
-          (m.director && m.director.toLowerCase().includes(q)) ||
-          (m.genres && m.genres.some((g) => g.toLowerCase().includes(q)));
-        if (!matches) return false;
-      }
+      // 1. Live query match (Stremio: results update as you type)
+      if (!matchesQuery(m, activeQuery.toLowerCase())) return false;
 
       // 2. Type filter
       if (selectedType === 'Movie') {
@@ -418,7 +431,7 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
     }
 
     return list;
-  }, [movies, query, selectedType, selectedSort, selectedGenre, selectedPlatform, searchLocalOnly, localLibraryMovies]);
+  }, [movies, query, deferredQuery, selectedType, selectedSort, selectedGenre, selectedPlatform, searchLocalOnly, localLibraryMovies]);
 
   // Map user custom list IDs to movie objects
   const populatedUserLists = useMemo(() => {
@@ -451,8 +464,15 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
           stopVoiceSearch();
         } else if (openDropdown) {
           setOpenDropdown(null);
+        } else if (showSuggestions) {
+          setShowSuggestions(false);
         } else if (isCreatingList) {
           setIsCreatingList(false);
+        } else if (query.trim()) {
+          // Stremio-like: first Escape clears the search, second closes
+          setQuery('');
+          setVoiceTranscript('');
+          inputRef.current?.focus();
         } else {
           onClose();
         }
@@ -474,17 +494,12 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isListening, openDropdown, isCreatingList, onClose]);
+  }, [isOpen, isListening, openDropdown, isCreatingList, onClose, query, showSuggestions]);
 
   if (!isOpen) return null;
 
-  const hasActiveFiltersOrQuery = 
-    query.trim().length > 0 || 
-    selectedGenre !== 'All Genres' || 
-    selectedType !== 'Movie' || 
-    selectedSort !== 'Popular' ||
-    selectedPlatform !== 'All Platforms' ||
-    searchLocalOnly;
+  // Library shelves when the search bar is empty; live results fill this pane while typing
+  const hasSearchQuery = query.trim().length > 0;
 
   return (
     <div 
@@ -544,28 +559,59 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
             <span>Back</span>
           </button>
 
-          {/* Search Input Box - 25% Shorter (75% width) */}
-          <div className="w-[75%] max-w-4xl relative flex items-center">
-            <Search className="absolute left-4 w-4 h-4 text-sky-400 pointer-events-none" />
+          {/* Stremio-style live search bar */}
+          <form
+            className="w-[75%] max-w-4xl relative flex items-center"
+            onSubmit={(e) => {
+              e.preventDefault();
+              // Enter selects the top live result (Stremio-like quick jump)
+              const top = searchSuggestions[0] || filteredMovies[0];
+              if (top) {
+                setShowSuggestions(false);
+                onSelectMovie(top);
+                onClose();
+              }
+            }}
+          >
+            <Search className="absolute left-4 w-4 h-4 text-sky-400 pointer-events-none z-10" />
             <input
               ref={inputRef}
               type="text"
+              autoComplete="off"
+              spellCheck={false}
+              enterKeyHint="search"
+              role="searchbox"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search movies, shows, directors, genres, or click Voice..."
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setShowSuggestions(true);
+                setOpenDropdown(null);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => {
+                // Allow suggestion click before hiding
+                window.setTimeout(() => setShowSuggestions(false), 150);
+              }}
+              placeholder="Search for a movie, series, celebrity or genre..."
               className="w-full h-[42px] pl-11 pr-28 rounded-full bg-white/10 border border-white/20 focus:border-sky-400 focus:bg-white/15 text-white font-display text-sm sm:text-base placeholder-zinc-400 focus:outline-none focus:ring-4 focus:ring-sky-400/20 transition-all"
+              aria-label="Search"
+              aria-autocomplete="list"
+              aria-expanded={showSuggestions && searchSuggestions.length > 0}
             />
             
-            <div className="absolute right-2.5 flex items-center gap-1.5">
+            <div className="absolute right-2.5 flex items-center gap-1.5 z-10">
               {query ? (
                 <button
                   type="button"
                   onClick={() => {
                     setQuery('');
                     setVoiceTranscript('');
+                    setShowSuggestions(false);
+                    inputRef.current?.focus();
                   }}
                   className="p-1 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                   title="Clear search"
+                  aria-label="Clear search"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -586,7 +632,42 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
                 <Mic className={`w-4 h-4 ${isListening ? 'animate-bounce text-white' : 'text-sky-400'}`} />
               </button>
             </div>
-          </div>
+
+            {/* Live autocomplete dropdown (Stremio-style as-you-type suggestions) */}
+            {showSuggestions && query.trim().length > 0 && searchSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-2 p-1.5 rounded-2xl bg-[#0c0c11]/98 backdrop-blur-2xl border border-white/15 shadow-2xl z-50 animate-in fade-in duration-150 max-h-80 overflow-y-auto no-scrollbar">
+                {searchSuggestions.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setQuery(item.title);
+                      setShowSuggestions(false);
+                      onSelectMovie(item);
+                      onClose();
+                    }}
+                    className="w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left hover:bg-white/10 transition-colors cursor-pointer"
+                  >
+                    <img
+                      src={item.posterUrl}
+                      alt=""
+                      className="w-8 h-12 rounded-md object-cover bg-zinc-800 shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-white truncate">{item.title}</div>
+                      <div className="text-[11px] text-zinc-400 truncate">
+                        {[item.releaseYear, item.genres?.slice(0, 2).join(', ')].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    {item.rating != null && (
+                      <span className="text-[11px] font-mono text-amber-300 shrink-0">{item.rating}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </form>
         </div>
 
         {/* Voice Search Leanback HUD / Visualizer */}
@@ -716,13 +797,13 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
               type="button"
               onClick={() => setOpenDropdown(openDropdown === 'type' ? null : 'type')}
               className={`min-w-[100px] h-[34px] px-3.5 rounded-full border transition-all flex items-center justify-between gap-2 text-xs font-medium cursor-pointer shadow-sm focus:outline-none ${
-                openDropdown === 'type' || selectedType !== 'Movie'
+                openDropdown === 'type' || selectedType !== 'All'
                   ? 'bg-sky-400 border-sky-400 text-black font-bold shadow-[0_0_12px_rgba(56,189,248,0.3)]'
                   : 'bg-white/10 hover:bg-white/20 border-white/15 text-zinc-200 hover:text-white'
               }`}
             >
-              <span className="truncate">{selectedType}</span>
-              <ChevronDown className={`w-3 h-3 transition-transform ${openDropdown === 'type' ? 'rotate-180 text-black' : selectedType !== 'Movie' ? 'text-black' : 'text-zinc-400'}`} />
+              <span className="truncate">{selectedType === 'All' ? 'Type' : selectedType}</span>
+              <ChevronDown className={`w-3 h-3 transition-transform ${openDropdown === 'type' ? 'rotate-180 text-black' : selectedType !== 'All' ? 'text-black' : 'text-zinc-400'}`} />
             </button>
 
             {openDropdown === 'type' && (
@@ -890,11 +971,11 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
           </button>
 
           {/* Reset Filters Shortcut (if customized) */}
-          {(selectedType !== 'Movie' || selectedSort !== 'Popular' || selectedGenre !== 'All Genres' || selectedPlatform !== 'All Platforms' || searchLocalOnly) && (
+          {(selectedType !== 'All' || selectedSort !== 'Popular' || selectedGenre !== 'All Genres' || selectedPlatform !== 'All Platforms' || searchLocalOnly) && (
             <button
               type="button"
               onClick={() => {
-                setSelectedType('Movie');
+                setSelectedType('All');
                 setSelectedSort('Popular');
                 setSelectedGenre('All Genres');
                 setSelectedPlatform('All Platforms');
@@ -908,9 +989,9 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
         </div>
       </div>
 
-      {/* Main View Area */}
-      {!hasActiveFiltersOrQuery ? (
-        /* When no search or custom filters: Display Watchlist and user-created lists */
+      {/* Main View Area — search results replace library shelves while the bar has text */}
+      {!hasSearchQuery ? (
+        /* Empty search bar: Display Watchlist and user-created lists */
         <div className="flex-1 overflow-y-auto no-scrollbar py-6 space-y-8">
           {/* Quick Header Banner */}
           <div className="flex items-center justify-between">
@@ -1097,23 +1178,38 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
           ))}
         </div>
       ) : (
-        /* When search or filters are active: Show results grid */
+        /* Search bar has text: replace shelves with live results grid */
         <div className="flex-1 overflow-y-auto no-scrollbar py-4">
-          <div className="flex items-center justify-between pb-3 text-xs text-zinc-400">
-            <span>
-              Showing <span className="text-white font-bold">{filteredMovies.length}</span> titles
-              {selectedType !== 'All' ? ` in ${selectedType}` : ''}
-              {selectedGenre !== 'All Genres' ? ` (${selectedGenre})` : ''}
-              {query.trim() ? ` for "${query}"` : ''}
-            </span>
-            <span className="font-medium text-sky-400">Sorted by {selectedSort}</span>
+          <div className="flex items-center justify-between pb-4 text-xs text-zinc-400">
+            <div className="flex items-center gap-2 min-w-0">
+              <Search className="w-4 h-4 text-sky-400 shrink-0" />
+              <span className="truncate">
+                Search results for <span className="text-white font-bold">&quot;{query.trim()}&quot;</span>
+                {' · '}
+                <span className="text-white font-bold">{filteredMovies.length}</span> titles
+                {selectedType !== 'All' ? ` in ${selectedType}` : ''}
+                {selectedGenre !== 'All Genres' ? ` · ${selectedGenre}` : ''}
+              </span>
+            </div>
+            <span className="font-medium text-sky-400 shrink-0 ml-3">Sorted by {selectedSort}</span>
           </div>
 
           {filteredMovies.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center text-center">
               <Film className="w-12 h-12 text-zinc-600 mb-3" />
               <span className="text-zinc-300 font-display text-lg font-bold">No matching titles found</span>
-              <p className="text-xs text-zinc-500 mt-1">Try switching the Media Type, clearing the genre filter, or refining your keywords.</p>
+              <p className="text-xs text-zinc-500 mt-1">Try a different keyword, or clear the search bar to return to your lists.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setVoiceTranscript('');
+                  inputRef.current?.focus();
+                }}
+                className="mt-4 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 text-white text-xs font-semibold border border-white/15 cursor-pointer"
+              >
+                Clear search &amp; show lists
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5 pb-8">
