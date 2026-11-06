@@ -15,6 +15,17 @@ import {
   writeJSON,
   gAi
 } from '$lib/server/db';
+// Same security helpers as the Express server (server.ts) — see
+// src/lib/security.ts. This SvelteKit route is currently unused (the
+// React/Express app is the live one), but it must carry the same fixes
+// so enabling it later does not reintroduce the flaws.
+import {
+  validateProxyUrl,
+  resolveMediaPath,
+  sanitizeMediaInput,
+  sanitizeUploadFilename,
+  MAX_UPLOAD_BYTES
+} from '$lib/security';
 
 export async function GET(event: RequestEvent) {
   const { params, url } = event;
@@ -39,29 +50,59 @@ export async function GET(event: RequestEvent) {
   }
 
   // 4. Stremio Proxy
+  // SECURITY: was an open SSRF proxy. Now https-only with an explicit
+  // hostname allowlist — see validateProxyUrl() in src/lib/security.ts.
   if (reqPath === 'stremio/proxy') {
-    let urlParam = url.searchParams.get('url');
-    if (!urlParam) {
-      return json({ error: 'Missing url parameter' }, { status: 400 });
+    let target: URL;
+    try {
+      target = validateProxyUrl(url.searchParams.get('url'));
+    } catch (err: any) {
+      return json({ error: err.message || 'Proxy host is not allowed' }, { status: 400 });
     }
-
-    if (urlParam.startsWith('stremio://')) {
-      urlParam = urlParam.replace('stremio://', 'https://');
-    }
+    const urlParam = target.toString();
 
     try {
-      const response = await fetch(urlParam, {
+      const response = await fetch(target, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (IINA Core Applet)',
           'Accept': 'application/json'
-        }
+        },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(10_000)
       });
-      
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (location) {
+          try {
+            const redirectTarget = validateProxyUrl(new URL(location, target).toString());
+            const redirectResponse = await fetch(redirectTarget, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (IINA Core Applet)',
+                'Accept': 'application/json'
+              },
+              redirect: 'manual',
+              signal: AbortSignal.timeout(10_000)
+            });
+            if (!redirectResponse.ok) {
+              throw new Error(`Failed status: ${redirectResponse.status}`);
+            }
+            return json(await redirectResponse.json());
+          } catch (err: any) {
+            return json({ error: err.message || 'Proxy host is not allowed' }, { status: 400 });
+          }
+        }
+      }
+
       if (!response.ok) {
         throw new Error(`Failed status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const text = await response.text();
+      if (text.length > 5 * 1024 * 1024) {
+        return json({ error: 'Addon response too large' }, { status: 502 });
+      }
+      const data = JSON.parse(text);
       
       if (urlParam.includes('/stream/') && data && Array.isArray(data.streams)) {
         data.streams = data.streams.map((stream: any) => {
@@ -158,12 +199,22 @@ Invite your friends to watch this together by clicking generating watch party lo
     }
 
     if (!video.isLocal) {
+      try {
+        const target = new URL(String(video.url));
+        if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+          return new Response('Invalid remote stream URL', { status: 400 });
+        }
+      } catch {
+        return new Response('Invalid remote stream URL', { status: 400 });
+      }
       throw redirect(302, video.url);
     }
 
-    const filePath = path.join(MEDIA_DIR, video.filename);
-    if (!fs.existsSync(filePath)) {
-      return new Response(`Physical stream source missing on disc: ${filePath}`, { status: 404 });
+    // SECURITY: resolveMediaPath() rejects traversal outside MEDIA_DIR,
+    // and the error no longer leaks the absolute on-disk path.
+    const filePath = resolveMediaPath(MEDIA_DIR, video.filename);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return new Response('Physical stream source missing on disc', { status: 404 });
     }
 
     const stat = fs.statSync(filePath);
@@ -277,14 +328,20 @@ export async function POST(event: RequestEvent) {
   const body = await event.request.json().catch(() => ({}));
 
   // 1. Add custom media url
+  // SECURITY: whitelist the body — the old `...body` spread let a caller
+  // overwrite `id`, `isLocal` and `filename` (see src/lib/security.ts).
   if (reqPath === 'media/add') {
     const media = readJSON(MEDIA_FILE, defaultMediaItems);
+    const safe = sanitizeMediaInput(body);
+    if (!safe) {
+      return json({ error: 'A valid title or http(s) url is required' }, { status: 400 });
+    }
     const newItem = {
       id: 'media_' + Math.random().toString(36).substring(2, 11),
       playCount: 0,
       playProgress: 0,
       subtitles: [],
-      ...body
+      ...safe
     };
     media.push(newItem);
     writeJSON(MEDIA_FILE, media);
@@ -297,7 +354,9 @@ export async function POST(event: RequestEvent) {
     const media = readJSON(MEDIA_FILE, defaultMediaItems);
     const idx = media.findIndex((m: any) => m.id === id);
     if (idx !== -1) {
-      media[idx].playProgress = playProgress;
+      if (typeof playProgress === 'number' && Number.isFinite(playProgress)) {
+        media[idx].playProgress = Math.max(0, playProgress);
+      }
       if (playCountIncrement) {
         media[idx].playCount = (media[idx].playCount || 0) + 1;
         media[idx].lastPlayed = new Date().toISOString();
@@ -310,6 +369,8 @@ export async function POST(event: RequestEvent) {
   }
 
   // 3. Vector upload binary endpoint
+  // SECURITY: video extensions only, 2 GiB cap, partial file removed
+  // on overflow — previously uncapped with no extension check.
   if (reqPath === 'upload') {
     const fileName = url.searchParams.get('fileName');
     const fileType = url.searchParams.get('type') || 'movie';
@@ -317,18 +378,43 @@ export async function POST(event: RequestEvent) {
       return json({ error: 'fileName is required as query parameter' }, { status: 400 });
     }
 
-    const cleanFileName = Date.now() + '_' + fileName.replace(/[^a-zA-Z0-9.\-_]/g, '');
-    const savePath = path.join(MEDIA_DIR, cleanFileName);
+    const cleanFileName = sanitizeUploadFilename(fileName);
+    if (!cleanFileName) {
+      return json(
+        { error: 'Only video files are accepted (.mp4, .mkv, .webm, .mov, .m4v, .avi)' },
+        { status: 400 }
+      );
+    }
+    const savePath = resolveMediaPath(MEDIA_DIR, cleanFileName);
+    if (!savePath) {
+      return json({ error: 'Invalid fileName' }, { status: 400 });
+    }
 
     const reader = event.request.body?.getReader();
     const writeStream = fs.createWriteStream(savePath);
 
+    let received = 0;
+    let aborted = false;
     if (reader) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        received += value.byteLength;
+        if (received > MAX_UPLOAD_BYTES) {
+          aborted = true;
+          writeStream.destroy();
+          try {
+            fs.unlinkSync(savePath);
+          } catch {
+            // Partial file may not exist yet.
+          }
+          return json({ error: 'Upload exceeds the 2 GiB limit' }, { status: 413 });
+        }
         writeStream.write(Buffer.from(value));
       }
+    }
+    if (aborted) {
+      return json({ error: 'Upload exceeds the 2 GiB limit' }, { status: 413 });
     }
     writeStream.end();
 
@@ -620,8 +706,9 @@ export async function DELETE(event: RequestEvent) {
     if (idx !== -1) {
       const item = media[idx];
       if (item.isLocal && item.filename) {
-        const localFilePath = path.join(MEDIA_DIR, item.filename);
-        if (fs.existsSync(localFilePath)) {
+        // SECURITY: resolveMediaPath() rejects traversal outside MEDIA_DIR.
+        const localFilePath = resolveMediaPath(MEDIA_DIR, item.filename);
+        if (localFilePath && fs.existsSync(localFilePath)) {
           try {
             fs.unlinkSync(localFilePath);
           } catch (e) {
