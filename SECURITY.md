@@ -13,9 +13,10 @@ Cloudflare Tunnel, Tailscale, etc.) that adds authentication, and set
 
 ## What is protected (fixed 2026-11-06)
 
-All of these apply to both backends — `server.ts` (Express, live) and
-`src/routes/api/[...path]/+server.ts` (SvelteKit, currently unused) —
-via the shared helpers in `src/lib/security.ts`:
+All of these apply to the Express backend in `server.ts`, via the
+shared helpers in `src/lib/security.ts`. (The SvelteKit duplicate API
+route that used to carry the same flaws was deleted in the dead-code
+cleanup of 2026-11-06, so there is now a single backend to patch.)
 
 - **Localhost by default.** The server binds `127.0.0.1:3000` unless
   `HOST` is set. Binding `0.0.0.0` prints a warning at startup.

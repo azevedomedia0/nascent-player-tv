@@ -1,5 +1,10 @@
 import React from 'react';
-import appLogoImg from '../assets/app-logo.png';
+
+// Logo lives in public/app-logo.png (single copy — also used by
+// index.html for favicon / og:image). Previously there were three
+// identical copies (root, public/, src/assets/); the src/assets one
+// was removed in the dead-code cleanup.
+const appLogoImg = '/app-logo.png';
 
 interface AppLogoProps {
   className?: string;
@@ -25,15 +30,11 @@ export const AppLogo: React.FC<AppLogoProps> = ({
       onClick={onClick}
       title={title}
     >
-      <img 
-        src={appLogoImg} 
+      <img
+        src={appLogoImg}
         alt={title}
         className="w-full h-full object-contain bg-transparent transition-transform duration-200"
         draggable={false}
-        onError={(e) => {
-          // Graceful fallback to static public asset path if necessary
-          (e.currentTarget as HTMLImageElement).src = '/app-logo.png';
-        }}
       />
     </div>
   );
