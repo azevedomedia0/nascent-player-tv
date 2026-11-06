@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   Play, 
   Film, 
@@ -65,10 +65,18 @@ import {
   APPLE_TV_TOP_20,
   APPLE_TV_TOP_20_SHOWS,
   LOCAL_MEDIA_FILES,
-  SHARED_PEER_LIBRARIES,
-  LocalMediaFileItem,
-  SharedPeerLibrary
+  type LocalMediaFileItem,
+  type SharedPeerLibrary,
 } from './lib/tvMediaData';
+import {
+  createPeerLibrary,
+  loadPeerLibraries,
+  loadPeerShareMeta,
+  peerAlreadyConnected,
+  savePeerLibraries,
+  savePeerShareMeta,
+  type PeerShareMeta,
+} from './lib/peerLibraryStore';
 
 // Rich IMDb data dictionary for cinematic accuracy
 export const IMDB_DATA: Record<string, { rating: string; certification: string; director: string; cast: string[]; plot: string; votes: string }> = {
@@ -448,11 +456,48 @@ export default function App() {
     name: string;
     path: string;
   } | null>(null);
-  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
-  const [connectCodeInput, setConnectCodeInput] = useState('');
-  const [connectStatusMsg, setConnectStatusMsg] = useState<string | null>(null);
+  const [openPeerConnectFromSidebar, setOpenPeerConnectFromSidebar] = useState(false);
   const [isScanningLocal, setIsScanningLocal] = useState(false);
   const [scanFeedback, setScanFeedback] = useState<string | null>(null);
+
+  // Shared peer libraries (settings + libraries + Watch Now mesh)
+  const [peerLibraries, setPeerLibraries] = useState<SharedPeerLibrary[]>(() => loadPeerLibraries());
+  const [peerShareMeta, setPeerShareMeta] = useState<PeerShareMeta>(() => loadPeerShareMeta());
+
+  const persistPeerLibraries = useCallback((next: SharedPeerLibrary[] | ((prev: SharedPeerLibrary[]) => SharedPeerLibrary[])) => {
+    setPeerLibraries((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      savePeerLibraries(resolved);
+      return resolved;
+    });
+  }, []);
+
+  const persistPeerShareMeta = useCallback((patch: Partial<PeerShareMeta> | ((prev: PeerShareMeta) => PeerShareMeta)) => {
+    setPeerShareMeta((prev) => {
+      const resolved = typeof patch === 'function' ? patch(prev) : { ...prev, ...patch };
+      savePeerShareMeta(resolved);
+      return resolved;
+    });
+  }, []);
+
+  const connectPeerLibrary = useCallback((opts: { name: string; inviteCode?: string; owner?: string }) => {
+    const existing = peerAlreadyConnected(peerLibraries, opts.inviteCode || opts.name);
+    if (existing) {
+      setSelectedPeerId(existing.id);
+      setActiveTab('shared-libraries');
+      return { ok: false as const, message: `Already connected to “${existing.name}”.`, peer: existing };
+    }
+    const peer = createPeerLibrary(opts);
+    persistPeerLibraries((prev) => [peer, ...prev]);
+    setSelectedPeerId(peer.id);
+    setActiveTab('shared-libraries');
+    return { ok: true as const, message: `Connected “${peer.name}”.`, peer };
+  }, [peerLibraries, persistPeerLibraries]);
+
+  const disconnectPeerLibrary = useCallback((peerId: string) => {
+    persistPeerLibraries((prev) => prev.filter((p) => p.id !== peerId));
+    setSelectedPeerId((curr) => (curr === peerId ? null : curr));
+  }, [persistPeerLibraries]);
 
   // User-created custom lists
   const [userCustomLists, setUserCustomLists] = useState<UserCustomList[]>(() => {
@@ -931,7 +976,7 @@ export default function App() {
               setSelectedLibraryFolder(null);
               setActiveTab('shared-libraries');
             }}
-            peers={SHARED_PEER_LIBRARIES.map((p) => ({
+            peers={peerLibraries.map((p) => ({
               id: p.id,
               name: p.name,
               owner: p.owner,
@@ -944,7 +989,11 @@ export default function App() {
             }))}
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
-            onOpenConnectModal={() => setIsConnectModalOpen(true)}
+            onOpenConnectModal={() => {
+              setActiveTab('shared-libraries');
+              setSelectedLibraryFolder(null);
+              setOpenPeerConnectFromSidebar(true);
+            }}
             localFilesCount={LOCAL_MEDIA_FILES.length}
             selectedFolderId={selectedLibraryFolder?.id ?? null}
             onSelectFolder={(folder) => {
@@ -1217,7 +1266,11 @@ export default function App() {
         {(activeTab === 'local-media' || activeTab === 'library' || activeTab === 'shared-libraries') && (
           <TvLibrariesView
             localMediaFiles={LOCAL_MEDIA_FILES}
-            peerLibraries={SHARED_PEER_LIBRARIES}
+            peerLibraries={peerLibraries}
+            openConnectPeerModal={openPeerConnectFromSidebar}
+            onConnectPeerModalOpened={() => setOpenPeerConnectFromSidebar(false)}
+            onConnectPeerLibrary={(opts) => connectPeerLibrary(opts)}
+            onDisconnectPeerLibrary={disconnectPeerLibrary}
             onPlayMovie={handlePlayMovie}
             onInspectMovie={(movie) => setInspectedMovie(movie)}
             onStreamSelectorMovie={(movie) => setStreamSelectorMovie(movie)}
@@ -1311,6 +1364,7 @@ export default function App() {
               userLists={userCustomLists}
               onCreateList={handleCreateUserList}
               onSelectMovie={(m) => setInspectedMovie(m)}
+              peerLibraries={peerLibraries}
             />
           </div>
         )}
@@ -1343,6 +1397,7 @@ export default function App() {
       {inspectedMovie && (
         <TvDetailModal
           movie={inspectedMovie}
+          peerLibraries={peerLibraries}
           onClose={() => setInspectedMovie(null)}
           onPlay={(m) => {
             setInspectedMovie(null);
@@ -1433,6 +1488,7 @@ export default function App() {
             setIsVoiceSearchRequested(false);
             setInspectedMovie(m);
           }}
+          peerLibraries={peerLibraries}
         />
       )}
 
@@ -1457,6 +1513,12 @@ export default function App() {
         onEqChange={handleEqChange}
         audioPreset={audioPreset}
         onAudioPresetChange={handleAudioPresetChange}
+        peerLibraries={peerLibraries}
+        peerShareMeta={peerShareMeta}
+        onPeerShareMetaChange={persistPeerShareMeta}
+        onConnectPeerLibrary={connectPeerLibrary}
+        onDisconnectPeerLibrary={disconnectPeerLibrary}
+        onPeerRequestsChange={(requests) => persistPeerShareMeta({ requests })}
       />
 
       {/* COMMUNITY PLUGINS & ADDONS MODAL */}

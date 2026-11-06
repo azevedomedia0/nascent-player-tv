@@ -40,9 +40,15 @@ import {
   Lock,
   Users,
   Share2,
-  WifiOff
+  WifiOff,
+  Unlink2
 } from 'lucide-react';
-import { SHARED_PEER_LIBRARIES } from '../../lib/tvMediaData';
+import { type SharedPeerLibrary } from '../../lib/tvMediaData';
+import {
+  generateInviteCode,
+  type PeerRequest,
+  type PeerShareMeta,
+} from '../../lib/peerLibraryStore';
 import { addonPaywall } from '../../lib/plugins/addonPaywall';
 import { TvAddonPaywallModal } from './TvAddonPaywallModal';
 
@@ -66,6 +72,16 @@ interface TvSettingsModalProps {
   audioPreset: string;
   onAudioPresetChange: (preset: any) => void;
   initialCategory?: SettingCategory;
+  peerLibraries?: SharedPeerLibrary[];
+  peerShareMeta?: PeerShareMeta;
+  onPeerShareMetaChange?: (patch: Partial<PeerShareMeta> | ((prev: PeerShareMeta) => PeerShareMeta)) => void;
+  onConnectPeerLibrary?: (opts: { name: string; inviteCode?: string; owner?: string }) => {
+    ok: boolean;
+    message: string;
+    peer?: SharedPeerLibrary;
+  };
+  onDisconnectPeerLibrary?: (peerId: string) => void;
+  onPeerRequestsChange?: (requests: PeerRequest[]) => void;
 }
 
 export type SettingCategory = 
@@ -117,7 +133,29 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   audioPreset,
   onAudioPresetChange,
   initialCategory = 'profile',
+  peerLibraries,
+  peerShareMeta,
+  onPeerShareMetaChange,
+  onConnectPeerLibrary,
+  onDisconnectPeerLibrary,
+  onPeerRequestsChange,
 }) => {
+  const connectedLibraryShares = peerLibraries ?? [];
+  const inviteCode = peerShareMeta?.inviteCode ?? 'NV-7F2K-9QPM';
+  const peerDiscovery = peerShareMeta?.peerDiscovery ?? true;
+  const autoAcceptLanPeers = peerShareMeta?.autoAcceptLanPeers ?? false;
+  const shareQuality = peerShareMeta?.shareQuality ?? 'high';
+  const peerRequests = peerShareMeta?.requests ?? [];
+
+  const updateMeta = (patch: Partial<PeerShareMeta>) => {
+    onPeerShareMetaChange?.(patch);
+  };
+
+  const updateRequests = (next: PeerRequest[] | ((prev: PeerRequest[]) => PeerRequest[])) => {
+    const resolved = typeof next === 'function' ? next(peerRequests) : next;
+    onPeerRequestsChange?.(resolved);
+  };
+
   const [activeCategory, setActiveCategory] = useState<SettingCategory>(() => {
     if (initialCategory === 'remote') return 'storage';
     if (initialCategory === 'streaming') return 'network';
@@ -127,13 +165,13 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
 
   // Profile Settings State
   const [profiles, setProfiles] = useState<UserProfile[]>([
-    { id: '1', name: 'Steven Azevedo', initials: 'SA', color: 'from-sky-500 to-indigo-600', isKid: false, isPrimary: true },
+    { id: '1', name: '@username', initials: 'UN', color: 'from-sky-500 to-indigo-600', isKid: false, isPrimary: true },
     { id: '2', name: 'Living Room TV', initials: 'LR', color: 'from-amber-500 to-orange-600', isKid: false },
     { id: '3', name: 'Kids Cinema', initials: 'KC', color: 'from-emerald-400 to-teal-600', isKid: true },
   ]);
   const [activeProfileId, setActiveProfileId] = useState<string>('1');
   const [editingName, setEditingName] = useState(false);
-  const [profileNameInput, setProfileNameInput] = useState('Steven Azevedo');
+  const [profileNameInput, setProfileNameInput] = useState('@username');
   const [maturityRating, setMaturityRating] = useState<'all' | 'pg13' | 'mature' | 'family'>('all');
   const [autoplayTrailers, setAutoplayTrailers] = useState(true);
   const [showContinueWatching, setShowContinueWatching] = useState(true);
@@ -289,6 +327,18 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [skipIntros, setSkipIntros] = useState(true);
   const [matchFrameRate, setMatchFrameRate] = useState(true);
   const [resumeBehavior, setResumeBehavior] = useState<'always' | 'ask' | 'restart'>('always');
+  const SOUND_OUTPUT_OPTIONS = [
+    { id: 'tv-speakers', label: 'TV Speakers', detail: 'Built-in · Stereo' },
+    { id: 'hdmi-arc', label: 'HDMI ARC / eARC', detail: 'Soundbar · Passthrough' },
+    { id: 'optical', label: 'Optical Out', detail: 'S/PDIF · PCM / Bitstream' },
+    { id: 'bt-headphones', label: 'Sony WH-1000XM5', detail: 'Bluetooth A2DP' },
+    { id: 'bt-soundbar', label: 'Samsung Soundbar Q990', detail: 'Bluetooth · Surround' },
+    { id: 'usb-dac', label: 'USB Audio DAC', detail: 'External · Hi-Res' },
+  ] as const;
+  const [soundOutputId, setSoundOutputId] = useState<string>('tv-speakers');
+  const [soundOutputMenuOpen, setSoundOutputMenuOpen] = useState(false);
+  const selectedSoundOutput =
+    SOUND_OUTPUT_OPTIONS.find((o) => o.id === soundOutputId) || SOUND_OUTPUT_OPTIONS[0];
 
   // Bluetooth devices (TV remotes, audio, accessories)
   type BtDeviceKind = 'remote' | 'audio' | 'other';
@@ -394,60 +444,14 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [libraryUpdateFreq, setLibraryUpdateFreq] = useState<'hourly' | 'daily' | 'manual'>('daily');
   const [cacheCleared, setCacheCleared] = useState(false);
 
-  // Peers & Library Shares
-  const [autoAcceptLanPeers, setAutoAcceptLanPeers] = useState(false);
-  const [peerDiscovery, setPeerDiscovery] = useState(true);
-  const [shareQuality, setShareQuality] = useState<'low' | 'med' | 'high'>('high');
-  const [inviteCode, setInviteCode] = useState('NV-7F2K-9QPM');
+  // Peers & Library Shares (UI-local; shared state from App props)
   const [peerJoinCode, setPeerJoinCode] = useState('');
   const [peerJoinFeedback, setPeerJoinFeedback] = useState<string | null>(null);
   const [addPeerName, setAddPeerName] = useState('');
   const [addPeerCode, setAddPeerCode] = useState('');
   const [addPeerFeedback, setAddPeerFeedback] = useState<string | null>(null);
   const [isAddPeerOpen, setIsAddPeerOpen] = useState(false);
-  const [peerRequests, setPeerRequests] = useState<
-    Array<{
-      id: string;
-      name: string;
-      handle: string;
-      initials: string;
-      color: string;
-      direction: 'incoming' | 'outgoing';
-      library: string;
-      sentAt: string;
-    }>
-  >([
-    {
-      id: 'req-in-1',
-      name: 'Jordan Lee',
-      handle: '@jordan_l',
-      initials: 'JL',
-      color: 'bg-gradient-to-tr from-violet-500 to-fuchsia-600',
-      direction: 'incoming',
-      library: 'Wants access to your library',
-      sentAt: '12m ago',
-    },
-    {
-      id: 'req-in-2',
-      name: 'Nova Media Lab',
-      handle: '@nova_lab',
-      initials: 'NM',
-      color: 'bg-gradient-to-tr from-cyan-500 to-blue-600',
-      direction: 'incoming',
-      library: 'Wants access to your library',
-      sentAt: '1h ago',
-    },
-    {
-      id: 'req-out-1',
-      name: 'Alex Remux Vault',
-      handle: '@alex_r',
-      initials: 'AR',
-      color: 'bg-gradient-to-tr from-amber-500 to-orange-600',
-      direction: 'outgoing',
-      library: 'Pending access to Alex’s 4K Remux Vault',
-      sentAt: '3h ago',
-    },
-  ]);
+  const [libraryShareFeedback, setLibraryShareFeedback] = useState<string | null>(null);
 
   // Server & LAN
   const [dlnaBroadcast, setDlnaBroadcast] = useState(true);
@@ -1200,6 +1204,86 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   </div>
                 </div>
 
+                {/* Sound Output */}
+                <div>
+                  <h3 className="font-display font-bold text-lg text-white mb-1">Sound Output</h3>
+                  <p className="text-xs text-zinc-400 mb-4">
+                    Route playback audio to TV speakers, HDMI ARC, optical, Bluetooth, or USB devices.
+                  </p>
+
+                  <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 flex items-center justify-center shrink-0">
+                        <Volume2 className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-semibold text-white">Audio Output Device</h4>
+                        <p className="text-xs text-zinc-400 truncate">
+                          Active: {selectedSoundOutput.label} · {selectedSoundOutput.detail}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="relative w-full sm:w-[280px] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSoundOutputMenuOpen((o) => !o)}
+                        aria-haspopup="listbox"
+                        aria-expanded={soundOutputMenuOpen}
+                        className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/15 hover:border-sky-400/50 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-white truncate">
+                            {selectedSoundOutput.label}
+                          </span>
+                          <span className="block text-[11px] text-zinc-400 truncate">
+                            {selectedSoundOutput.detail}
+                          </span>
+                        </span>
+                        <ChevronDown
+                          className={`w-4 h-4 text-zinc-400 shrink-0 transition-transform ${
+                            soundOutputMenuOpen ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {soundOutputMenuOpen && (
+                        <ul
+                          role="listbox"
+                          aria-label="Sound output devices"
+                          className="absolute z-20 mt-2 w-full max-h-64 overflow-y-auto rounded-xl bg-zinc-900 border border-white/15 shadow-2xl shadow-black/50 py-1.5"
+                        >
+                          {SOUND_OUTPUT_OPTIONS.map((opt) => {
+                            const selected = opt.id === soundOutputId;
+                            return (
+                              <li key={opt.id} role="option" aria-selected={selected}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSoundOutputId(opt.id);
+                                    setSoundOutputMenuOpen(false);
+                                  }}
+                                  className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left transition ${
+                                    selected
+                                      ? 'bg-sky-500/15 text-sky-200'
+                                      : 'text-zinc-200 hover:bg-white/5'
+                                  }`}
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-semibold truncate">{opt.label}</span>
+                                    <span className="block text-[11px] text-zinc-400 truncate">{opt.detail}</span>
+                                  </span>
+                                  {selected ? <Check className="w-4 h-4 text-sky-400 shrink-0" /> : null}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="pt-2 border-t border-white/10">
                   <h3 className="font-display font-bold text-lg text-white mb-1">Cinema Audio Equalizer</h3>
                   <p className="text-xs text-zinc-400 mb-4">Fine-tune frequencies for home cinema acoustics, TV speakers, and soundbars.</p>
@@ -1589,7 +1673,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         <p className="text-xs text-zinc-400">Broadcast presence on the local network</p>
                       </div>
                       <button
-                        onClick={() => setPeerDiscovery(!peerDiscovery)}
+                        onClick={() => updateMeta({ peerDiscovery: !peerDiscovery })}
                         className={`w-12 h-6 rounded-full transition-colors relative ${peerDiscovery ? 'bg-sky-500' : 'bg-zinc-700'}`}
                       >
                         <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${peerDiscovery ? 'right-0.5' : 'left-0.5'}`} />
@@ -1602,7 +1686,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         <p className="text-xs text-zinc-400">Skip invite approval for same-subnet devices</p>
                       </div>
                       <button
-                        onClick={() => setAutoAcceptLanPeers(!autoAcceptLanPeers)}
+                        onClick={() => updateMeta({ autoAcceptLanPeers: !autoAcceptLanPeers })}
                         className={`w-12 h-6 rounded-full transition-colors relative ${autoAcceptLanPeers ? 'bg-sky-500' : 'bg-zinc-700'}`}
                       >
                         <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${autoAcceptLanPeers ? 'right-0.5' : 'left-0.5'}`} />
@@ -1619,7 +1703,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         ].map((q) => (
                           <button
                             key={q.id}
-                            onClick={() => setShareQuality(q.id as typeof shareQuality)}
+                            onClick={() => updateMeta({ shareQuality: q.id as PeerShareMeta['shareQuality'] })}
                             className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
                               shareQuality === q.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
                             }`}
@@ -1684,16 +1768,23 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                               type="button"
                               onClick={() => {
                                 if (!addPeerName.trim() || !addPeerCode.trim()) return;
-                                setAddPeerFeedback(`Connecting to ${addPeerName.trim()}…`);
-                                setTimeout(() => {
-                                  setAddPeerFeedback(`Peer “${addPeerName.trim()}” added.`);
+                                const name = addPeerName.trim();
+                                const code = addPeerCode.trim();
+                                setAddPeerFeedback(`Connecting to ${name}…`);
+                                window.setTimeout(() => {
+                                  const result = onConnectPeerLibrary?.({
+                                    name,
+                                    inviteCode: code,
+                                    owner: name,
+                                  });
+                                  setAddPeerFeedback(result?.message || `Peer “${name}” added.`);
                                   setAddPeerName('');
                                   setAddPeerCode('');
-                                  setTimeout(() => {
+                                  window.setTimeout(() => {
                                     setAddPeerFeedback(null);
                                     setIsAddPeerOpen(false);
-                                  }, 2000);
-                                }, 700);
+                                  }, result?.ok === false ? 2200 : 1600);
+                                }, 450);
                               }}
                               className="flex-1 py-1.5 rounded-full bg-pink-500 hover:bg-pink-400 text-white text-xs font-bold transition"
                             >
@@ -1728,10 +1819,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </code>
                     <button
                       type="button"
-                      onClick={() => {
-                        const next = `NV-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-                        setInviteCode(next);
-                      }}
+                      onClick={() => updateMeta({ inviteCode: generateInviteCode('NV') })}
                       className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition"
                     >
                       Rotate
@@ -1754,22 +1842,44 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                       onClick={() => {
                         if (!peerJoinCode.trim()) return;
                         const code = peerJoinCode.trim();
-                        setPeerRequests((prev) => [
+                        if (autoAcceptLanPeers) {
+                          const result = onConnectPeerLibrary?.({
+                            name: `${code} Vault`,
+                            inviteCode: code,
+                            owner: code,
+                          });
+                          setPeerJoinFeedback(result?.message || `Connected via ${code}.`);
+                          setPeerJoinCode('');
+                          window.setTimeout(() => setPeerJoinFeedback(null), 3500);
+                          return;
+                        }
+                        updateRequests((prev) => [
                           {
                             id: `req-out-${Date.now()}`,
                             name: code,
-                            handle: code,
-                            initials: code.slice(0, 2),
+                            handle: `@${code.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 12)}`,
+                            initials: code.replace(/[^A-Z0-9]/g, '').slice(0, 2) || 'NV',
                             color: 'bg-gradient-to-tr from-sky-500 to-indigo-600',
                             direction: 'outgoing',
                             library: `Pending access for invite ${code}`,
                             sentAt: 'Just now',
+                            inviteCode: code,
                           },
                           ...prev,
                         ]);
                         setPeerJoinFeedback(`Request sent for ${code}. Waiting for peer approval…`);
                         setPeerJoinCode('');
-                        setTimeout(() => setPeerJoinFeedback(null), 4000);
+                        // Demo: auto-approve outgoing after a short delay so Join completes into Connected Shares
+                        window.setTimeout(() => {
+                          const result = onConnectPeerLibrary?.({
+                            name: `${code} Vault`,
+                            inviteCode: code,
+                            owner: code,
+                          });
+                          updateRequests((prev) => prev.filter((r) => r.inviteCode !== code));
+                          setPeerJoinFeedback(result?.message || `Peer approved — connected via ${code}.`);
+                          window.setTimeout(() => setPeerJoinFeedback(null), 3500);
+                        }, 1600);
                       }}
                       className="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold transition shrink-0"
                     >
@@ -1833,14 +1943,25 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                               <>
                                 <button
                                   type="button"
-                                  onClick={() => setPeerRequests((prev) => prev.filter((r) => r.id !== req.id))}
+                                  onClick={() => updateRequests((prev) => prev.filter((r) => r.id !== req.id))}
                                   className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-rose-500/20 text-zinc-300 hover:text-rose-300 text-[11px] font-semibold transition"
                                 >
                                   Decline
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setPeerRequests((prev) => prev.filter((r) => r.id !== req.id))}
+                                  onClick={() => {
+                                    const result = onConnectPeerLibrary?.({
+                                      name: `${req.name}'s Shared Library`,
+                                      inviteCode: req.inviteCode || req.handle,
+                                      owner: req.name,
+                                    });
+                                    updateRequests((prev) => prev.filter((r) => r.id !== req.id));
+                                    setLibraryShareFeedback(
+                                      result?.message || `Accepted share from ${req.name}`
+                                    );
+                                    window.setTimeout(() => setLibraryShareFeedback(null), 2800);
+                                  }}
                                   className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-[11px] font-bold transition flex items-center gap-1"
                                 >
                                   <Check className="w-3 h-3" />
@@ -1850,7 +1971,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setPeerRequests((prev) => prev.filter((r) => r.id !== req.id))}
+                                onClick={() => updateRequests((prev) => prev.filter((r) => r.id !== req.id))}
                                 className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-zinc-300 text-[11px] font-semibold transition"
                               >
                                 Cancel Request
@@ -1867,46 +1988,69 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   <div className="flex items-center justify-between mb-3 gap-3">
                     <h4 className="text-sm font-semibold text-white">Connected Library Shares</h4>
                     <span className="text-[11px] text-zinc-400 font-mono shrink-0">
-                      {SHARED_PEER_LIBRARIES.filter((p) => p.status !== 'offline').length} online
+                      {connectedLibraryShares.filter((p) => p.status !== 'offline').length} online
                     </span>
                   </div>
+                  {libraryShareFeedback && (
+                    <p className="mb-2.5 text-[11px] text-amber-300/90 font-medium">{libraryShareFeedback}</p>
+                  )}
                   <div className="flex flex-col gap-2.5">
-                    {SHARED_PEER_LIBRARIES.map((peer) => (
-                      <div
-                        key={peer.id}
-                        className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`w-10 h-10 rounded-xl ${peer.avatarColor} text-white font-bold text-xs flex items-center justify-center shrink-0 shadow`}>
-                            {peer.avatarInitials}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h5 className="text-sm font-semibold text-white truncate">{peer.name}</h5>
-                              <span
-                                className={`w-2 h-2 rounded-full shrink-0 ${
-                                  peer.status === 'offline' ? 'bg-zinc-500' : peer.status === 'streaming' ? 'bg-amber-400' : 'bg-emerald-400'
-                                }`}
-                              />
-                            </div>
-                            <p className="text-[11px] text-zinc-400 truncate">
-                              {peer.owner} · {peer.itemCount} titles · {peer.pingMs}ms · {peer.bandwidth}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {peer.status === 'offline' ? (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-white/5 text-zinc-400 flex items-center gap-1">
-                              <WifiOff className="w-3 h-3" /> Offline
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 capitalize">
-                              {peer.status}
-                            </span>
-                          )}
-                        </div>
+                    {connectedLibraryShares.length === 0 ? (
+                      <div className="p-4 rounded-2xl bg-white/[0.03] border border-dashed border-white/10 text-center">
+                        <p className="text-xs text-zinc-500">No library shares connected</p>
                       </div>
-                    ))}
+                    ) : (
+                      connectedLibraryShares.map((peer) => (
+                        <div
+                          key={peer.id}
+                          className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-10 h-10 rounded-xl ${peer.avatarColor} text-white font-bold text-xs flex items-center justify-center shrink-0 shadow`}>
+                              {peer.avatarInitials}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h5 className="text-sm font-semibold text-white truncate">{peer.name}</h5>
+                                <span
+                                  className={`w-2 h-2 rounded-full shrink-0 ${
+                                    peer.status === 'offline' ? 'bg-zinc-500' : peer.status === 'streaming' ? 'bg-amber-400' : 'bg-emerald-400'
+                                  }`}
+                                />
+                              </div>
+                              <p className="text-[11px] text-zinc-400 truncate">
+                                {peer.owner} · {peer.itemCount} titles · {peer.pingMs}ms · {peer.bandwidth}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {peer.status === 'offline' ? (
+                              <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-white/5 text-zinc-400 flex items-center gap-1">
+                                <WifiOff className="w-3 h-3" /> Offline
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 capitalize">
+                                {peer.status}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDisconnectPeerLibrary?.(peer.id);
+                                setLibraryShareFeedback(`Disconnected “${peer.name}”`);
+                                window.setTimeout(() => setLibraryShareFeedback(null), 2400);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/25 hover:border-rose-400/40 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                              title={`Disconnect ${peer.name}`}
+                              aria-label={`Disconnect ${peer.name}`}
+                            >
+                              <Unlink2 className="w-3 h-3" />
+                              Disconnect
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>

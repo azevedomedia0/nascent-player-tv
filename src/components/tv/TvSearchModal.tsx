@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { FeaturedMovie } from './TvHeroBillboard';
 import { AppLogo } from '../AppLogo';
-import { LOCAL_MEDIA_FILES, SHARED_PEER_LIBRARIES } from '../../lib/tvMediaData';
+import { LOCAL_MEDIA_FILES, SHARED_PEER_LIBRARIES, type SharedPeerLibrary } from '../../lib/tvMediaData';
 import { globalPluginEngine } from '../../lib/plugins/pluginEngine';
 import { MetaDetail } from '../../lib/plugins/types';
 import { searchImdb } from '../../lib/imdbService';
@@ -79,6 +79,7 @@ interface TvSearchModalProps {
   onCreateList?: (name: string, description?: string) => void;
   onRemoveFromList?: (listId: string, movieId: string) => void;
   initialVoiceActive?: boolean;
+  peerLibraries?: SharedPeerLibrary[];
 }
 
 export type MediaTypeFilter = 'All' | 'Movie' | 'TV Show';
@@ -104,6 +105,7 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
   onCreateList,
   onRemoveFromList,
   initialVoiceActive = false,
+  peerLibraries = SHARED_PEER_LIBRARIES,
 }) => {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
@@ -358,7 +360,7 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
       statusBadge: 'Local NVMe Master'
     }));
 
-    const shared: FeaturedMovie[] = SHARED_PEER_LIBRARIES.flatMap((p) =>
+    const shared: FeaturedMovie[] = peerLibraries.flatMap((p) =>
       p.media.map((m) => ({
         ...m,
         statusBadge: `Shared: ${p.name}`
@@ -366,7 +368,7 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
     );
 
     return [...locals, ...shared];
-  }, []);
+  }, [peerLibraries]);
 
   const matchesQuery = (m: FeaturedMovie, q: string) => {
     if (!q) return true;

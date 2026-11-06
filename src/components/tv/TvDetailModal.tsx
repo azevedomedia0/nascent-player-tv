@@ -23,7 +23,7 @@ import { UserCustomList } from './TvSearchModal';
 import { fetchImdbMetadata, enrichCastArray, fetchImdbCastImages, CastMember } from '../../lib/imdbService';
 import { getAvailableSeasons, getEpisodesForSeason, isTvSeries } from '../../lib/tvEpisodeData';
 import { TvStreamSelectorModal, StreamSource } from './TvStreamSelectorModal';
-import { LOCAL_MEDIA_FILES, SHARED_PEER_LIBRARIES } from '../../lib/tvMediaData';
+import { LOCAL_MEDIA_FILES, SHARED_PEER_LIBRARIES, type SharedPeerLibrary } from '../../lib/tvMediaData';
 
 /** Strip quality tags / punctuation for library title matching */
 const normalizeMediaTitle = (title: string) =>
@@ -55,7 +55,10 @@ type LibraryVideoMatch = {
   connectionDetail: string;
 };
 
-const findLibraryVideoMatch = (movie: FeaturedMovie): LibraryVideoMatch | null => {
+const findLibraryVideoMatch = (
+  movie: FeaturedMovie,
+  peerLibraries: SharedPeerLibrary[] = SHARED_PEER_LIBRARIES
+): LibraryVideoMatch | null => {
   const movieTitle = normalizeMediaTitle(movie.title);
   const movieMinutes = parseDurationToMinutes(movie.duration);
   if (!movieTitle || movieMinutes == null) return null;
@@ -67,7 +70,7 @@ const findLibraryVideoMatch = (movie: FeaturedMovie): LibraryVideoMatch | null =
       sourceLabel: 'Local Library',
       connectionDetail: `${f.path} • ${f.bitrate} • ${f.audioTrack}`,
     })),
-    ...SHARED_PEER_LIBRARIES.flatMap((peer) =>
+    ...peerLibraries.flatMap((peer) =>
       peer.media.map((m) => ({
         title: m.title,
         durationMinutes: parseDurationToMinutes(m.duration) ?? -1,
@@ -92,6 +95,7 @@ const findLibraryVideoMatch = (movie: FeaturedMovie): LibraryVideoMatch | null =
 
 interface TvDetailModalProps {
   movie: FeaturedMovie | null;
+  peerLibraries?: SharedPeerLibrary[];
   onClose: () => void;
   onPlay: (movie: FeaturedMovie) => void;
   onPlayTrailer: (movie: FeaturedMovie) => void;
@@ -107,6 +111,7 @@ interface TvDetailModalProps {
 
 export const TvDetailModal: React.FC<TvDetailModalProps> = ({
   movie,
+  peerLibraries = SHARED_PEER_LIBRARIES,
   onClose,
   onPlay,
   onPlayTrailer,
@@ -476,7 +481,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
     });
 
     // Mesh P2P only when Local / Shared Libraries have a matching title + runtime
-    const libraryMatch = findLibraryVideoMatch(movie);
+    const libraryMatch = findLibraryVideoMatch(movie, peerLibraries);
     if (libraryMatch) {
       options.push({
         id: 'addon-mesh-peer',
@@ -491,7 +496,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
     }
 
     return options;
-  }, [movie]);
+  }, [movie, peerLibraries]);
 
   const backdropImage = movie.posterUrl || movie.bannerUrl;
   const ratingValue = movie.imdbRating || movie.rating || "8.5";

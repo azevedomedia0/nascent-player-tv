@@ -275,10 +275,10 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
         <div 
           onClick={onOpenSettings}
           className="flex items-center gap-2.5 pl-1 cursor-pointer group"
-          title="Steven Azevedo (Settings & Profile)"
+          title="@username (Settings & Profile)"
         >
           <div className="w-8 h-8 rounded-full ring-2 ring-sky-500/40 group-hover:ring-sky-400 overflow-hidden bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-md">
-            SA
+            UN
           </div>
         </div>
       </div>

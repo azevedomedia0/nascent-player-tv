@@ -77,6 +77,13 @@ interface TvLibrariesViewProps {
   onSelectPeer: (peerId: string | null) => void;
   selectedFolder?: SelectedLibraryFolder | null;
   onClearFolder?: () => void;
+  openConnectPeerModal?: boolean;
+  onConnectPeerModalOpened?: () => void;
+  onConnectPeerLibrary?: (opts: { name: string; inviteCode?: string; owner?: string }) => {
+    ok: boolean;
+    message: string;
+  };
+  onDisconnectPeerLibrary?: (peerId: string) => void;
 }
 
 export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
@@ -90,6 +97,10 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
   onSelectPeer,
   selectedFolder = null,
   onClearFolder,
+  openConnectPeerModal = false,
+  onConnectPeerModalOpened,
+  onConnectPeerLibrary,
+  onDisconnectPeerLibrary,
 }) => {
   // Navigation tabs within Libraries
   type LibraryTab = 'all' | 'longest' | 'masters' | 'played' | 'volumes' | 'network' | 'peers';
@@ -509,19 +520,36 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
     setTimeout(() => setScanStatus(null), 3500);
   };
 
+  // Open connect modal when triggered from sidebar
+  useEffect(() => {
+    if (!openConnectPeerModal) return;
+    setIsConnectPeerModalOpen(true);
+    onConnectPeerModalOpened?.();
+  }, [openConnectPeerModal, onConnectPeerModalOpened]);
+
   // Handle Peer connect code
   const handleConnectPeer = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!peerCodeInput.trim()) return;
+    const code = peerCodeInput.trim().toUpperCase();
+    if (!code) return;
     setPeerConnectStatus('Handshaking with P2P peer node...');
-    setTimeout(() => {
-      setPeerConnectStatus('Peer verified: "Alex\'s 4K Remux Vault" connected at 94 Mbps.');
-      setTimeout(() => {
+    window.setTimeout(() => {
+      if (!onConnectPeerLibrary) {
+        setPeerConnectStatus('Peer connection unavailable.');
+        return;
+      }
+      const result = onConnectPeerLibrary({
+        name: code.startsWith('PEER-') || code.startsWith('NV-') ? `${code} Vault` : code,
+        inviteCode: code,
+        owner: code,
+      });
+      setPeerConnectStatus(result.message);
+      window.setTimeout(() => {
         setIsConnectPeerModalOpen(false);
         setPeerCodeInput('');
         setPeerConnectStatus(null);
-      }, 1200);
-    }, 1000);
+      }, result.ok ? 900 : 1800);
+    }, 650);
   };
 
   return (
@@ -576,6 +604,20 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
             <Network className="w-3.5 h-3.5 text-orange-400" />
             <span>+ Mount Share</span>
           </button>
+
+          {activePeer && onDisconnectPeerLibrary ? (
+            <button
+              onClick={() => {
+                onDisconnectPeerLibrary(activePeer.id);
+                onSelectPeer(null);
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 hover:text-white text-xs font-medium border border-rose-500/30 transition-all focus:outline-none focus:ring-1 focus:ring-rose-400 cursor-pointer"
+              title={`Disconnect ${activePeer.name}`}
+            >
+              <X className="w-3.5 h-3.5 text-rose-400" />
+              <span>Disconnect</span>
+            </button>
+          ) : null}
 
           <button
             onClick={() => setIsConnectPeerModalOpen(true)}
