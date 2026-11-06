@@ -293,7 +293,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           <button
             onClick={onToggleCollapse}
             className={`flex items-center justify-center shrink-0 ${
-              isCollapsed ? 'w-10 h-10 rounded-xl mx-auto' : 'w-8 h-8 rounded-full'
+              isCollapsed ? 'w-10 h-10 rounded-full mx-auto' : 'w-8 h-8 rounded-full'
             } bg-white/5 hover:bg-white/15 text-zinc-400 hover:text-white border border-white/10 transition-all focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer`}
             title={isCollapsed ? "Expand sidebar (M)" : "Collapse sidebar (M)"}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -321,7 +321,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
               title="Local Media Files (Direct Storage)"
             >
               <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
-                <div className={`flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
+                <div className={`flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-full ${
                   isLocalActive 
                     ? 'bg-sky-500 text-black shadow-md shadow-sky-500/30' 
                     : 'bg-white/10 text-sky-400'
@@ -399,7 +399,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
               title="Shared Libraries from other users"
             >
               <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
-                <div className={`relative flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
+                <div className={`relative flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-full ${
                   isSharedActive && !selectedPeerId
                     ? 'bg-pink-500 text-white' 
                     : 'bg-white/10 text-pink-400'
@@ -445,7 +445,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate min-w-0">
-                        <div className={`w-6 h-6 rounded-lg ${peer.avatarColor} text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                        <div className={`w-6 h-6 rounded-full ${peer.avatarColor} text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm`}>
                           {peer.avatarInitials}
                         </div>
                         <div className="flex flex-col truncate">
@@ -513,7 +513,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   title={`${dev.name} (${dev.freeSpace} • ${dev.itemCount} files)`}
                 >
                   <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${
+                    <div className={`flex items-center justify-center w-9 h-9 rounded-full transition-all ${
                       isSelected ? 'bg-yellow-400 text-black shadow-md shadow-yellow-500/20' : 'bg-yellow-400/10 text-yellow-400 group-hover:bg-yellow-400/20'
                     }`}>
                       <Usb className="w-4 h-4" />
@@ -573,7 +573,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   title={`${share.name} (${share.address} • ${share.itemCount} files)`}
                 >
                   <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${
+                    <div className={`flex items-center justify-center w-9 h-9 rounded-full transition-all ${
                       isSelected ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20' : 'bg-orange-500/10 text-orange-400 group-hover:bg-orange-500/20'
                     }`}>
                       <Server className="w-4 h-4" />
@@ -625,7 +625,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
               title="Community Plugins & Addons (Stremio Protocol)"
             >
               <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 group-hover:scale-105 transition-transform shrink-0">
+                <div className="flex items-center justify-center w-9 h-9 rounded-full bg-indigo-500/20 text-indigo-400 group-hover:scale-105 transition-transform shrink-0">
                   <Puzzle className="w-5 h-5" />
                 </div>
                 {!isCollapsed && (

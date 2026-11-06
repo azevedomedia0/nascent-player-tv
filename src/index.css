@@ -101,11 +101,26 @@ header[data-tab] {
   -webkit-backdrop-filter: none !important;
 }
 
+/* Shared movies-tab / app shell background (logo iridescent gradients) */
+.nascent-app-bg {
+  background-color: #0c101c;
+  background-image:
+    radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
+    radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 70% at 92% 95%, rgba(253, 224, 71, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 95% 85% at 50% 50%, rgba(168, 85, 247, 0.20) 0%, transparent 70%),
+    linear-gradient(135deg, #0b1120 0%, #170d24 25%, #220b1f 50%, #0a1e19 75%, #1c1c0a 100%);
+  background-attachment: fixed;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
 /* Authentic app logo gradient for search tab background */
 div#root:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)[data-search-modal="true"],
 [data-search-modal="true"] {
   background-color: #0c101c !important;
-  background-image: 
+  background-image:
     radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
     radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
     radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.28) 0%, transparent 60%),
