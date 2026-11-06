@@ -1,0 +1,60 @@
+/* Reuses project fonts from index.css: Outfit (display) + Inter / Plus Jakarta Sans */
+
+:root {
+  --ns-bg: #0c101c;
+  --ns-ink: #f1f5f9;
+  --ns-muted: rgba(241, 245, 249, 0.55);
+  --ns-accent: #38bdf8;
+  --ns-accent-soft: rgba(56, 189, 248, 0.18);
+  --ns-surface: rgba(22, 18, 36, 0.72);
+  --ns-border: rgba(255, 255, 255, 0.12);
+  --logo-cyan: #38bdf8;
+  --logo-mint: #34d399;
+  --logo-magenta: #f472b6;
+  --logo-gold: #fde047;
+}
+
+html.nascent-site-active,
+body.nascent-site-active {
+  background-color: var(--ns-bg) !important;
+  background-image:
+    radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
+    radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 70% at 92% 95%, rgba(253, 224, 71, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 95% 85% at 50% 50%, rgba(129, 140, 248, 0.16) 0%, transparent 70%),
+    linear-gradient(135deg, #0b1120 0%, #170d24 25%, #220b1f 50%, #0a1e19 75%, #1c1c0a 100%) !important;
+  background-attachment: fixed !important;
+  background-size: cover !important;
+  color: var(--ns-ink) !important;
+  font-family: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif !important;
+  user-select: auto !important;
+  -webkit-user-select: auto !important;
+  overflow-x: hidden;
+  overscroll-behavior: auto;
+}
+
+.nascent-site {
+  --ns-bg: #0c101c;
+  --ns-ink: #f1f5f9;
+  --ns-muted: rgba(241, 245, 249, 0.55);
+  --ns-accent: #38bdf8;
+  background: transparent;
+  color: var(--ns-ink);
+  font-family: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.font-ns-display,
+.nascent-site .font-ns-display {
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.nascent-site ::selection {
+  background: rgba(56, 189, 248, 0.45);
+  color: #fff;
+}
+
+.nascent-site a {
+  color: inherit;
+}

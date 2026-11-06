@@ -21,9 +21,13 @@ import {
   Sparkles,
   Play,
   Gamepad2,
+  Bluetooth,
+  BluetoothConnected,
+  Headphones,
   User,
   UserCheck,
   UserPlus,
+  LogOut,
   Shield,
   Eye,
   EyeOff,
@@ -277,7 +281,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   // Audio / Video & Existing Preferences
   const [bufferSize, setBufferSize] = useState('512MB');
   const [hardwareAccel, setHardwareAccel] = useState(true);
-  const [ambilightMode, setAmbilightMode] = useState('vibrant');
   const [nightMode, setNightMode] = useState(false);
   const [audioPassthrough, setAudioPassthrough] = useState(true);
 
@@ -285,8 +288,97 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [autoPlayNext, setAutoPlayNext] = useState(true);
   const [skipIntros, setSkipIntros] = useState(true);
   const [matchFrameRate, setMatchFrameRate] = useState(true);
-  const [aspectRatio, setAspectRatio] = useState<'original' | 'fit' | 'cinema'>('original');
   const [resumeBehavior, setResumeBehavior] = useState<'always' | 'ask' | 'restart'>('always');
+
+  // Bluetooth devices (TV remotes, audio, accessories)
+  type BtDeviceKind = 'remote' | 'audio' | 'other';
+  type BtDevice = {
+    id: string;
+    name: string;
+    kind: BtDeviceKind;
+    status: 'paired' | 'connected' | 'available';
+    detail: string;
+  };
+  const [btFilter, setBtFilter] = useState<'all' | BtDeviceKind>('all');
+  const [btScanning, setBtScanning] = useState(false);
+  const [btFeedback, setBtFeedback] = useState<string | null>(null);
+  const [btDevices, setBtDevices] = useState<BtDevice[]>([
+    {
+      id: 'bt-remote-1',
+      name: 'Android TV Remote',
+      kind: 'remote',
+      status: 'connected',
+      detail: 'HID · Battery 86%',
+    },
+    {
+      id: 'bt-audio-1',
+      name: 'Sony WH-1000XM5',
+      kind: 'audio',
+      status: 'paired',
+      detail: 'A2DP · Last seen nearby',
+    },
+    {
+      id: 'bt-audio-2',
+      name: 'Samsung Soundbar Q990',
+      kind: 'audio',
+      status: 'available',
+      detail: 'Audio sink · Not paired',
+    },
+    {
+      id: 'bt-other-1',
+      name: 'Xbox Wireless Controller',
+      kind: 'other',
+      status: 'available',
+      detail: 'Gamepad · Ready to pair',
+    },
+  ]);
+
+  const handleBluetoothScan = () => {
+    setBtScanning(true);
+    setBtFeedback('Scanning for nearby Bluetooth devices…');
+    window.setTimeout(() => {
+      setBtDevices((prev) => {
+        const extras: BtDevice[] = [
+          {
+            id: `bt-remote-new-${Date.now()}`,
+            name: 'Chromecast Voice Remote',
+            kind: 'remote',
+            status: 'available',
+            detail: 'TV remote · Just discovered',
+          },
+          {
+            id: `bt-audio-new-${Date.now()}`,
+            name: 'AirPods Pro',
+            kind: 'audio',
+            status: 'available',
+            detail: 'Audio · Just discovered',
+          },
+        ];
+        const existing = new Set(prev.map((d) => d.name));
+        return [...prev, ...extras.filter((d) => !existing.has(d.name))];
+      });
+      setBtScanning(false);
+      setBtFeedback('Scan complete — select a device to pair');
+      window.setTimeout(() => setBtFeedback(null), 2800);
+    }, 1600);
+  };
+
+  const handleBluetoothPair = (id: string) => {
+    setBtDevices((prev) =>
+      prev.map((d) =>
+        d.id === id
+          ? { ...d, status: 'connected', detail: d.kind === 'remote' ? 'HID · Connected' : d.kind === 'audio' ? 'A2DP · Connected' : 'Connected' }
+          : d
+      )
+    );
+    const device = btDevices.find((d) => d.id === id);
+    setBtFeedback(device ? `Paired & connected: ${device.name}` : 'Device connected');
+    window.setTimeout(() => setBtFeedback(null), 2500);
+  };
+
+  const handleBluetoothRemove = (id: string) => {
+    setBtDevices((prev) => prev.filter((d) => d.id !== id));
+  };
 
   // Subtitles & Audio Languages
   const [subtitleLang, setSubtitleLang] = useState('English');
@@ -296,7 +388,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
 
   // Streaming Engine
   const [maxResolution, setMaxResolution] = useState<'4k' | '1080p' | 'auto'>('4k');
-  const [fastSeek, setFastSeek] = useState(true);
 
   // Storage & Drives
   const [autoScanUsb, setAutoScanUsb] = useState(true);
@@ -390,20 +481,13 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
     setTimeout(() => setProfileFeedback(null), 3000);
   };
 
-  const handleAddNewProfile = () => {
-    const newName = `Guest ${profiles.length + 1}`;
-    const newProfile: UserProfile = {
-      id: String(Date.now()),
-      name: newName,
-      initials: 'G' + (profiles.length + 1),
-      color: 'from-purple-500 to-pink-600',
-      isKid: false,
-    };
-    setProfiles((prev) => [...prev, newProfile]);
-    setActiveProfileId(newProfile.id);
-    setProfileNameInput(newName);
-    setProfileFeedback(`Created and switched to "${newName}".`);
-    setTimeout(() => setProfileFeedback(null), 3500);
+  const handleLogOut = () => {
+    setEditingName(false);
+    setProfileFeedback('Signed out of this device.');
+    window.setTimeout(() => {
+      setProfileFeedback(null);
+      onClose();
+    }, 900);
   };
 
   const handleTogglePlugin = (pluginId: string) => {
@@ -616,10 +700,17 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         </div>
                       )}
                       <div className="flex items-center gap-2.5 mt-1">
-                        <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[11px] font-semibold flex items-center gap-1">
-                          <ShieldCheck className="w-3 h-3 text-sky-400" />
-                          Nascent TV Plus · Active Member
-                        </span>
+                        {pluginsUnlocked ? (
+                          <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[11px] font-semibold flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-sky-400" />
+                            Nascent TV Plus · Premium Member
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-white/10 text-zinc-400 border border-white/15 text-[11px] font-semibold flex items-center gap-1">
+                            <Shield className="w-3 h-3 text-zinc-500" />
+                            Basic Member
+                          </span>
+                        )}
                         {currentProfile.isKid && (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold">
                             Kids Filter Enabled
@@ -629,56 +720,16 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Switch or Add Profile */}
+                  {/* Log Out */}
                   <div className="flex items-center gap-2 self-stretch md:self-center">
                     <button
-                      onClick={handleAddNewProfile}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-zinc-200 hover:text-white border border-white/15 text-xs font-semibold transition-all cursor-pointer"
+                      type="button"
+                      onClick={handleLogOut}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-rose-500/20 text-zinc-200 hover:text-rose-200 border border-white/15 hover:border-rose-500/40 text-xs font-semibold transition-all cursor-pointer"
                     >
-                      <UserPlus className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Add Profile</span>
+                      <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Log Out</span>
                     </button>
-                  </div>
-                </div>
-
-                {/* Profiles Switcher Row */}
-                <div>
-                  <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2.5">
-                    Viewer Profiles on this Device
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {profiles.map((p) => {
-                      const isSelected = p.id === activeProfileId;
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => {
-                            setActiveProfileId(p.id);
-                            setProfileNameInput(p.name);
-                            setEditingName(false);
-                            setProfileFeedback(`Switched profile to ${p.name}`);
-                            setTimeout(() => setProfileFeedback(null), 2500);
-                          }}
-                          className={`p-3.5 rounded-2xl border flex items-center gap-3 transition-all cursor-pointer text-left ${
-                            isSelected
-                              ? 'bg-sky-500/15 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
-                              : 'bg-white/5 border-white/10 hover:bg-white/10'
-                          }`}
-                        >
-                          <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${p.color} flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-md`}>
-                            {p.initials}
-                          </div>
-                          <div className="truncate min-w-0">
-                            <span className={`block font-semibold text-xs truncate ${isSelected ? 'text-sky-300 font-bold' : 'text-zinc-200'}`}>
-                              {p.name}
-                            </span>
-                            <span className="text-[10px] text-zinc-500">
-                              {p.isPrimary ? 'Primary Account' : p.isKid ? 'Kids Rating' : 'Household Member'}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
                   </div>
                 </div>
 
@@ -774,10 +825,10 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   </div>
                   <div className="flex items-center gap-1.5">
                     {[
+                      { id: 'watchlists', label: 'Watchlist' },
                       { id: 'movies', label: 'Movies' },
                       { id: 'shows', label: 'TV Shows' },
                       { id: 'local-media', label: 'Libraries' },
-                      { id: 'watchlists', label: 'Watchlist' },
                     ].map((tab) => (
                       <button
                         key={tab.id}
@@ -1081,7 +1132,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                 {/* Playback & Video Preferences */}
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Playback & Video Preferences</h3>
-                  <p className="text-xs text-zinc-400 mb-4">Frame rate matching, automation, and aspect ratio controls.</p>
+                  <p className="text-xs text-zinc-400 mb-4">Frame rate matching, automation, and resume behavior.</p>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
@@ -1123,49 +1174,28 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                       </button>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Default Aspect Ratio</span>
-                      <div className="flex items-center gap-2">
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3 justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Resume Playback</h4>
+                        <p className="text-xs text-zinc-400">Choose behavior when opening previously watched titles</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         {[
-                          { id: 'original', label: 'Original' },
-                          { id: 'fit', label: 'Fit to TV' },
-                          { id: 'cinema', label: '21:9 Scope' },
-                        ].map((ar) => (
+                          { id: 'always', label: 'Resume' },
+                          { id: 'ask', label: 'Always Ask' },
+                          { id: 'restart', label: 'Start Over' },
+                        ].map((r) => (
                           <button
-                            key={ar.id}
-                            onClick={() => setAspectRatio(ar.id as any)}
-                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                              aspectRatio === ar.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
+                            key={r.id}
+                            onClick={() => setResumeBehavior(r.id as any)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${
+                              resumeBehavior === r.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
                             }`}
                           >
-                            {ar.label}
+                            {r.label}
                           </button>
                         ))}
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">Resume Playback</h4>
-                      <p className="text-xs text-zinc-400">Choose behavior when opening previously watched titles</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {[
-                        { id: 'always', label: 'Resume' },
-                        { id: 'ask', label: 'Always Ask' },
-                        { id: 'restart', label: 'Start Over' },
-                      ].map((r) => (
-                        <button
-                          key={r.id}
-                          onClick={() => setResumeBehavior(r.id as any)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                            resumeBehavior === r.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                          }`}
-                        >
-                          {r.label}
-                        </button>
-                      ))}
                     </div>
                   </div>
                 </div>
@@ -1253,28 +1283,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Ambilight Setting */}
-                <div className="pt-2 flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/10">
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">Ambilight Ambient Glow</h4>
-                    <span className="text-xs text-zinc-400">Dynamic lighting reflecting colors around the display</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {['off', 'subtle', 'vibrant'].map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setAmbilightMode(m)}
-                        className={`px-4 py-1.5 rounded-full text-xs uppercase font-bold transition-all ${
-                          ambilightMode === m
-                            ? 'bg-sky-500 text-black'
-                            : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                        }`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1365,91 +1373,141 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 7. Devices & Drives (includes Android TV Remote) */}
+            {/* 7. Devices & Drives (includes Bluetooth) */}
             {activeCategory === 'storage' && (
               <div className="flex flex-col gap-8">
-                {/* Android TV Remote Controller */}
+                {/* Bluetooth Devices */}
                 <div>
-                  <h3 className="font-display font-bold text-lg text-white mb-1">Android TV Remote Controller</h3>
+                  <h3 className="font-display font-bold text-lg text-white mb-1">Bluetooth Devices</h3>
                   <p className="text-xs text-zinc-400 mb-5">
-                    Navigate the interface using the virtual directional pad, media controls, and quick action shortcuts.
+                    Pair TV remotes, headphones, soundbars, gamepads, and other Bluetooth accessories for lean-back control.
                   </p>
 
                   <div className="p-6 rounded-3xl bg-gradient-to-br from-sky-950/40 via-zinc-900/60 to-black/80 border border-sky-500/20 mb-6 flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="flex items-center gap-4">
                       <div className="w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center shadow-lg">
-                        <Gamepad2 className="w-7 h-7" />
+                        <Bluetooth className="w-7 h-7" />
                       </div>
                       <div>
-                        <h4 className="text-base font-bold text-white mb-0.5">Virtual D-Pad Remote Overlay</h4>
+                        <h4 className="text-base font-bold text-white mb-0.5">Add Bluetooth Device</h4>
                         <p className="text-xs text-zinc-400">
-                          {isRemoteOpen
-                            ? 'Virtual remote is currently active on screen.'
-                            : 'Open floating Android TV remote for directional browsing & playback.'}
+                          {btFeedback || 'Scan nearby to add TV remotes, audio devices, and accessories.'}
                         </p>
                       </div>
                     </div>
 
                     <button
-                      onClick={() => onToggleRemote?.()}
-                      className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-lg flex items-center gap-2 focus:ring-2 focus:ring-sky-400 focus:outline-none ${
-                        isRemoteOpen
-                          ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
+                      type="button"
+                      onClick={handleBluetoothScan}
+                      disabled={btScanning}
+                      className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-lg flex items-center gap-2 focus:ring-2 focus:ring-sky-400 focus:outline-none disabled:opacity-70 ${
+                        btScanning
+                          ? 'bg-sky-500/30 border border-sky-400/40 text-sky-200'
                           : 'bg-sky-500 hover:bg-sky-400 text-black shadow-sky-500/30'
                       }`}
                     >
-                      <Gamepad2 className="w-4 h-4" />
-                      <span>{isRemoteOpen ? 'Close Remote Overlay' : 'Launch TV Remote'}</span>
+                      <RefreshCw className={`w-4 h-4 ${btScanning ? 'animate-spin' : ''}`} />
+                      <span>{btScanning ? 'Scanning…' : 'Scan for Devices'}</span>
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Remote Keyboard Shortcuts</h4>
-                      <div className="flex flex-col gap-2 text-xs">
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">D-Pad Up / Down</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">↑ / ↓ Scroll</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">D-Pad Left / Right</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">← / → Carousel</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Center OK / Select</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Enter / Space</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-300">Back / Return</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Esc / Backspace</kbd>
-                        </div>
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+                    {[
+                      { id: 'all', label: 'All Devices' },
+                      { id: 'remote', label: 'TV Remotes' },
+                      { id: 'audio', label: 'Audio' },
+                      { id: 'other', label: 'Other' },
+                    ].map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setBtFilter(f.id as typeof btFilter)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${
+                          btFilter === f.id
+                            ? 'bg-sky-500 text-black font-bold'
+                            : 'bg-white/5 hover:bg-white/10 text-zinc-300'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
 
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Controller Specs & Connectivity</h4>
-                      <div className="flex flex-col gap-2 text-xs">
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Profile Protocol</span>
-                          <span className="font-semibold text-zinc-200">Android TV D-Pad HID</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Haptic Feedback</span>
-                          <span className="font-semibold text-emerald-400">Enabled (Vibrate)</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Repeat Delay</span>
-                          <span className="font-mono text-zinc-300">180 ms</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-300">Status</span>
-                          <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            Connected
-                          </span>
-                        </div>
+                  <div className="space-y-2.5">
+                    {btDevices
+                      .filter((d) => btFilter === 'all' || d.kind === btFilter)
+                      .map((device) => {
+                        const KindIcon =
+                          device.kind === 'remote' ? Tv : device.kind === 'audio' ? Headphones : Gamepad2;
+                        const kindLabel =
+                          device.kind === 'remote' ? 'TV Remote' : device.kind === 'audio' ? 'Audio' : 'Accessory';
+                        return (
+                          <div
+                            key={device.id}
+                            className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-500/25 text-sky-400 flex items-center justify-center shrink-0">
+                                {device.status === 'connected' ? (
+                                  <BluetoothConnected className="w-5 h-5" />
+                                ) : (
+                                  <KindIcon className="w-5 h-5" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-white truncate">{device.name}</span>
+                                  <span className="px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-white/10 text-zinc-400">
+                                    {kindLabel}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold capitalize ${
+                                      device.status === 'connected'
+                                        ? 'bg-emerald-500/20 text-emerald-300'
+                                        : device.status === 'paired'
+                                          ? 'bg-sky-500/20 text-sky-300'
+                                          : 'bg-white/10 text-zinc-400'
+                                    }`}
+                                  >
+                                    {device.status}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-zinc-500 mt-0.5">{device.detail}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {device.status !== 'connected' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleBluetoothPair(device.id)}
+                                  className="px-3.5 py-1.5 rounded-full bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold transition-all flex items-center gap-1.5"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  {device.status === 'available' ? 'Pair & Add' : 'Connect'}
+                                </button>
+                              ) : (
+                                <span className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1.5 px-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  In use
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleBluetoothRemove(device.id)}
+                                className="p-2 rounded-full bg-white/5 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 border border-white/10 transition-all"
+                                title="Forget device"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    {btDevices.filter((d) => btFilter === 'all' || d.kind === btFilter).length === 0 && (
+                      <div className="p-5 rounded-2xl bg-white/5 border border-dashed border-white/10 text-center text-xs text-zinc-500">
+                        No devices in this category. Scan to discover remotes, audio gear, and accessories.
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 
@@ -1895,19 +1953,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-semibold text-white">Sub-50ms Fast Seek</h4>
-                        <p className="text-xs text-zinc-400">Prefetches I-frame keyframe packets</p>
-                      </div>
-                      <button
-                        onClick={() => setFastSeek(!fastSeek)}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${fastSeek ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${fastSeek ? 'right-0.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-
                     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
                       <span className="text-xs font-semibold text-zinc-400 uppercase">Max Stream Resolution</span>
                       <div className="flex items-center gap-2">
@@ -1928,22 +1973,23 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         ))}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="mt-6 p-5 rounded-2xl bg-sky-950/40 border border-sky-400/30 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-white">Full Telemetry HUD</h4>
-                      <p className="text-xs text-sky-300">Live bitrate graphs, dropping frame monitoring, and peer mesh</p>
+                    <div className="p-4 rounded-2xl bg-sky-950/40 border border-sky-400/30 flex flex-col gap-3 justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Full Telemetry HUD</h4>
+                        <p className="text-xs text-sky-300">Live bitrate graphs, dropping frame monitoring, and peer mesh</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenStreamingHUD();
+                        }}
+                        className="self-start px-4 py-2 rounded-full bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-lg transition-all"
+                      >
+                        Open Telemetry HUD
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        onClose();
-                        onOpenStreamingHUD();
-                      }}
-                      className="px-5 py-2.5 rounded-full bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-lg transition-all"
-                    >
-                      Open Telemetry HUD
-                    </button>
                   </div>
                 </div>
 

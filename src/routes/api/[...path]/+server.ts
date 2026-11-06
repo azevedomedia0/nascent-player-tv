@@ -66,7 +66,7 @@ export async function GET(event: RequestEvent) {
       if (urlParam.includes('/stream/') && data && Array.isArray(data.streams)) {
         data.streams = data.streams.map((stream: any) => {
           if (stream.infoHash && !stream.url) {
-            stream.url = `http://localhost:3000/api/stremio/torrent/stream?infoHash=${stream.infoHash}&fileIdx=${stream.fileIdx || 0}&title=${encodeURIComponent(stream.title || 'Stream')}`;
+            stream.url = `http://localhost:3001/api/stremio/torrent/stream?infoHash=${stream.infoHash}&fileIdx=${stream.fileIdx || 0}&title=${encodeURIComponent(stream.title || 'Stream')}`;
           }
           return stream;
         });

@@ -241,6 +241,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
     director: file.director,
     summary: file.summary,
     streamUrl: file.streamUrl,
+    duration: parseDurationSeconds(file.duration),
   });
 
   /** Same action button language as the hero billboard */
@@ -766,7 +767,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
             <span className="text-[11px] font-mono text-purple-300/80 uppercase tracking-wider font-semibold mr-0.5 hidden sm:inline">
               Scope:
             </span>
-            <div className="inline-flex items-center p-1 rounded-full bg-purple-950/50 border border-purple-500/20 shadow-inner backdrop-blur-sm">
+            <div className="inline-flex items-center p-1 rounded-full bg-transparent border border-purple-500/20">
               <button
                 type="button"
                 onClick={() => {

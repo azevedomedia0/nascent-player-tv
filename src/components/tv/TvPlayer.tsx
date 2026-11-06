@@ -136,6 +136,22 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const runtimeLabel = (() => {
+    const fromMeta = movie.duration
+      ? movie.duration > 500
+        ? movie.duration
+        : movie.duration * 60
+      : 0;
+    const fromVideo = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    // Prefer catalog runtime; fall back to loaded media length
+    const totalSeconds = fromMeta || fromVideo;
+    if (!totalSeconds) return '—';
+    const totalMins = Math.round(totalSeconds / 60);
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  })();
+
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed);
     if (videoRef.current) {
@@ -221,7 +237,7 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
               <span>·</span>
               <span>{movie.genres?.[0] || 'Movie'}</span>
               <span>·</span>
-              <span className="text-sky-400 font-semibold uppercase">{quality} HDR 60FPS</span>
+              <span className="text-sky-400 font-semibold tabular-nums">{runtimeLabel}</span>
             </div>
           </div>
         </div>

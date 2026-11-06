@@ -1007,20 +1007,6 @@ export default function App() {
                 selectedItemId={currentFeatured.id}
               />
 
-              {/* Top Seeding — highest active P2P seeders */}
-              <TvContentRow
-                title="Top Seeding"
-                subtitle="Most active P2P seeders right now"
-                items={topSeedingMovies}
-                onSelectItem={(m) => setInspectedMovie(m)}
-                onFocusItem={(m) => setSelectedMovie(m)}
-                isRanked={true}
-                showSeeders={true}
-                updatedDaily={true}
-                dailyDateString={todayDateString}
-                selectedItemId={currentFeatured.id}
-              />
-
               {/* Row 1: Top 50 Movies on Netflix */}
               <TvContentRow
                 title="Top 50 Movies on Netflix"
@@ -1092,6 +1078,19 @@ export default function App() {
                 dailyDateString={todayDateString}
                 selectedItemId={currentFeatured.id}
               />
+
+              {/* Top Seeding — last rail */}
+              <TvContentRow
+                title="Top Seeding"
+                items={topSeedingMovies}
+                onSelectItem={(m) => setInspectedMovie(m)}
+                onFocusItem={(m) => setSelectedMovie(m)}
+                isRanked={true}
+                showSeeders={true}
+                updatedDaily={true}
+                dailyDateString={todayDateString}
+                selectedItemId={currentFeatured.id}
+              />
             </div>
           </>
         )}
@@ -1123,20 +1122,6 @@ export default function App() {
                 onSelectItem={(m) => handlePlayMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
                 isContinueWatching={true}
-                selectedItemId={currentFeaturedShow.id}
-              />
-
-              {/* Top Seeding — highest active P2P seeders */}
-              <TvContentRow
-                title="Top Seeding"
-                subtitle="Most active P2P seeders right now"
-                items={topSeedingShows}
-                onSelectItem={(m) => setInspectedMovie(m)}
-                onFocusItem={(m) => setSelectedShow(m)}
-                isRanked={true}
-                showSeeders={true}
-                updatedDaily={true}
-                dailyDateString={todayDateString}
                 selectedItemId={currentFeaturedShow.id}
               />
 
@@ -1207,6 +1192,19 @@ export default function App() {
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
                 isRanked={true}
+                updatedDaily={true}
+                dailyDateString={todayDateString}
+                selectedItemId={currentFeaturedShow.id}
+              />
+
+              {/* Top Seeding — last rail */}
+              <TvContentRow
+                title="Top Seeding"
+                items={topSeedingShows}
+                onSelectItem={(m) => setInspectedMovie(m)}
+                onFocusItem={(m) => setSelectedShow(m)}
+                isRanked={true}
+                showSeeders={true}
                 updatedDaily={true}
                 dailyDateString={todayDateString}
                 selectedItemId={currentFeaturedShow.id}

@@ -11,7 +11,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const PORT = 3000;
+const PORT = 3001;
 const app = express();
 
 app.use(express.json({ limit: "50mb" }));
@@ -1097,7 +1097,7 @@ app.get("/api/stremio/proxy", async (req, res) => {
     if (urlParam.includes("/stream/") && data && Array.isArray(data.streams)) {
       data.streams = data.streams.map((stream: any) => {
         if (stream.infoHash && !stream.url) {
-          stream.url = `http://localhost:3000/api/stremio/torrent/stream?infoHash=${stream.infoHash}&fileIdx=${stream.fileIdx || 0}&title=${encodeURIComponent(stream.title || "Stream")}`;
+          stream.url = `http://localhost:${PORT}/api/stremio/torrent/stream?infoHash=${stream.infoHash}&fileIdx=${stream.fileIdx || 0}&title=${encodeURIComponent(stream.title || "Stream")}`;
         }
         return stream;
       });
