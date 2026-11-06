@@ -28,7 +28,8 @@ import {
   SlidersHorizontal,
   Info,
   Radio,
-  Share2
+  Share2,
+  Star
 } from 'lucide-react';
 import { FeaturedMovie } from './TvHeroBillboard';
 import { LocalMediaFileItem, SharedPeerLibrary } from '../../lib/tvMediaData';
@@ -809,7 +810,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
             <span className="text-[11px] font-mono text-purple-300/80 uppercase tracking-wider font-semibold mr-0.5 hidden sm:inline">
               Scope:
             </span>
-            <div className="inline-flex items-center p-1 rounded-full bg-transparent border border-purple-500/20">
+            <div className="inline-flex items-center p-1 rounded-full bg-[#110A17] border border-purple-500/20">
               <button
                 type="button"
                 onClick={() => {
@@ -1110,83 +1111,64 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Movie Grid for this Peer Library */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    {/* Movie poster grid — matches Movies tab thumbnail cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 lg:gap-4">
                       {peerLibrary.filteredMedia.map((item) => (
                         <div
                           key={`${peerLibrary.id}-${item.id}`}
-                          className="group relative rounded-2xl overflow-hidden bg-[#161618] border border-white/10 hover:border-pink-500/50 hover:shadow-xl hover:shadow-pink-500/10 transition-all duration-300 flex flex-col justify-between"
+                          onClick={() => onPlayMovie(item)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onPlayMovie(item);
+                            }
+                          }}
+                          tabIndex={0}
+                          className="group/card cursor-pointer focus:outline-none"
                         >
-                          {/* Portrait movie poster */}
-                          <div 
-                            onClick={() => onPlayMovie(item)}
-                            className="relative w-full aspect-[2/3] bg-zinc-900 overflow-hidden cursor-pointer"
-                          >
+                          <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 shadow-xl transition-all duration-300 transform group-hover/card:scale-105 group-hover/card:border-white/40 group-focus/card:scale-105 group-focus/card:ring-4 group-focus/card:ring-sky-400 group-focus/card:border-white">
                             <img
                               src={item.posterUrl || item.bannerUrl}
                               alt={item.title}
-                              className="w-full h-full object-cover object-top group-hover:scale-105 transition-all duration-300"
+                              loading="lazy"
+                              className="w-full h-full object-cover group-hover/card:brightness-110 transition-all"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-                            {/* Hover play overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
-                              <div className="w-12 h-12 rounded-full bg-pink-500 text-white flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                                <Play className="w-5 h-5 fill-current ml-0.5" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover/card:opacity-100 group-focus/card:opacity-100 transition-opacity flex flex-col justify-between p-2.5">
+                              <div className="flex justify-between items-start gap-1.5">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/70 border border-white/20 text-zinc-200 max-w-[70%] truncate">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${peerLibrary.avatarColor}`} />
+                                  {peerLibrary.owner}
+                                </span>
+                                {item.rating ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/70 border border-white/20 text-amber-400 flex items-center gap-1 shrink-0">
+                                    <Star className="w-2.5 h-2.5 fill-amber-400" />
+                                    {item.rating}
+                                  </span>
+                                ) : null}
                               </div>
-                            </div>
-
-                            {/* Bottom rating (runtime moved to card body) */}
-                            {item.rating && (
-                              <div className="absolute bottom-2 left-3 flex items-center gap-2 text-[11px] font-mono text-zinc-300">
-                                <span className="text-amber-400 font-semibold">★ {item.rating}</span>
+                              <div>
+                                <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg mb-2">
+                                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                                </div>
+                                <h3 className="font-display font-bold text-xs text-white line-clamp-1">{item.title}</h3>
+                                <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                                  <span>{item.releaseYear}</span>
+                                  <span>·</span>
+                                  <span>{item.genres?.[0] || 'Shared'}</span>
+                                </div>
                               </div>
-                            )}
-
-                            {/* Peer source badge top-right */}
-                            <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-white/15 text-[11px] font-medium text-white shadow-md">
-                              <span className={`w-2 h-2 rounded-full ${peerLibrary.avatarColor}`} />
-                              <span className="text-zinc-200 truncate max-w-[130px]">{peerLibrary.owner}</span>
                             </div>
                           </div>
 
-                          {/* Metadata Body */}
-                          <div className="p-4 flex flex-col gap-2.5">
-                            <div className="flex flex-col">
-                              <div className="flex items-center justify-between gap-2">
-                                <h4 
-                                  onClick={() => onPlayMovie(item)}
-                                  className="text-base font-bold text-white group-hover:text-pink-300 transition-colors truncate cursor-pointer"
-                                >
-                                  {item.title}
-                                </h4>
-                                <span className="text-xs font-mono text-zinc-500">{item.releaseYear}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5 text-xs text-pink-400 mt-0.5">
-                                <span className="truncate">{peerLibrary.name}</span>
-                                <span className="text-zinc-600">·</span>
-                                <span className="font-mono text-zinc-500">{peerLibrary.pingMs}ms latency</span>
-                              </div>
-                            </div>
-
-                            {/* Genres & Runtime Line */}
-                            <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 flex-wrap">
-                              {item.certification && (
-                                <>
-                                  <span className="text-zinc-300 font-semibold">{item.certification}</span>
-                                  <span className="text-zinc-600">·</span>
-                                </>
-                              )}
-                              <span className="text-amber-300 truncate max-w-[170px]">{item.genres?.slice(0, 3).join(', ')}</span>
-                              <span className="text-zinc-600">·</span>
-                              <span className="text-zinc-300">
-                                {item.duration ? `${Math.floor(item.duration / 60)}h ${item.duration % 60}m` : '2h 15m'}
-                              </span>
-                            </div>
-
-                            {/* Card Footer Actions — hero-style buttons */}
-                            <div className="pt-2 border-t border-white/5">
-                              {renderHeroStyleActions(item, { showWatchParty: true, compact: true })}
+                          <div className="mt-2 px-0.5">
+                            <h3 className="font-display font-medium text-xs lg:text-sm text-zinc-200 group-hover/card:text-white line-clamp-1">
+                              {item.title}
+                            </h3>
+                            <div className="text-[11px] text-zinc-500 flex items-center gap-1.5">
+                              <span>{item.releaseYear}</span>
+                              <span>·</span>
+                              <span className="truncate">{peerLibrary.name}</span>
                             </div>
                           </div>
                         </div>
@@ -1198,69 +1180,85 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
             )}
 
             {searchScopeIncludesLocal && hasLocalSearchResults && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 lg:gap-4">
                 {filteredLocalFiles.map((file) => {
                   const movie = convertToMovie(file);
+                  const codecShort = file.codec.split(' ')[0];
 
                   return (
                     <div
                       key={file.id}
-                      className="group relative rounded-2xl overflow-hidden bg-[#161618] border border-white/10 hover:border-white/25 hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
+                      onClick={() => onPlayMovie(movie)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onPlayMovie(movie);
+                        }
+                      }}
+                      tabIndex={0}
+                      className="group/card cursor-pointer focus:outline-none"
                     >
-                      {/* Portrait movie poster */}
-                      <div 
-                        onClick={() => onPlayMovie(movie)}
-                        className="relative w-full aspect-[2/3] bg-zinc-900 overflow-hidden cursor-pointer"
-                      >
+                      <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 shadow-xl transition-all duration-300 transform group-hover/card:scale-105 group-hover/card:border-white/40 group-focus/card:scale-105 group-focus/card:ring-4 group-focus/card:ring-sky-400 group-focus/card:border-white">
                         <img
                           src={file.posterUrl || file.bannerUrl}
                           alt={file.title}
-                          className="w-full h-full object-cover object-top group-hover:scale-105 transition-all duration-300"
+                          loading="lazy"
+                          className="w-full h-full object-cover group-hover/card:brightness-110 transition-all"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-                        {/* Hover play overlay */}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
-                          <div className="w-12 h-12 rounded-full bg-sky-500 text-black flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                            <Play className="w-5 h-5 fill-current ml-0.5" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover/card:opacity-100 group-focus/card:opacity-100 transition-opacity flex flex-col justify-between p-2.5">
+                          <div className="flex justify-end">
+                            {file.rating ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/70 border border-white/20 text-amber-400 flex items-center gap-1">
+                                <Star className="w-2.5 h-2.5 fill-amber-400" />
+                                {file.rating}
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-black/70 border border-white/20 text-emerald-300">
+                                {codecShort}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg mb-2">
+                              <Play className="w-4 h-4 fill-current ml-0.5" />
+                            </div>
+                            <h3 className="font-display font-bold text-xs text-white line-clamp-1">{file.title}</h3>
+                            <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                              <span>{file.releaseYear}</span>
+                              <span>·</span>
+                              <span>{file.duration}</span>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Progress bar for Recently Played */}
                         {!isSearching && activeLibraryTab === 'played' && (
                           <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-                            <div 
-                              className="h-full bg-emerald-400" 
-                              style={{ width: file.id === 'bbb-sample' ? '82%' : file.id === 'sintel-sample' ? '54%' : '67%' }} 
+                            <div
+                              className="h-full bg-emerald-400"
+                              style={{
+                                width:
+                                  file.id === 'bbb-sample'
+                                    ? '82%'
+                                    : file.id === 'sintel-sample'
+                                      ? '54%'
+                                      : '67%',
+                              }}
                             />
                           </div>
                         )}
                       </div>
 
-                      {/* Metadata Body */}
-                      <div className="p-4 flex flex-col gap-2.5">
-                        <div className="flex flex-col">
-                          <div className="flex items-center justify-between gap-2">
-                            <h4 
-                              onClick={() => onPlayMovie(movie)}
-                              className="text-base font-bold text-white group-hover:text-sky-300 transition-colors truncate cursor-pointer"
-                            >
-                              {file.title}
-                            </h4>
-                            <span className="text-xs font-mono text-zinc-500">{file.releaseYear}</span>
-                          </div>
-                          <span className="text-[10px] font-mono text-zinc-500 truncate mt-0.5">
-                            {file.path}
-                          </span>
-                        </div>
-
-                        {/* Codec, Audio Spec & Runtime Line */}
-                        <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 flex-wrap">
-                          <span className="text-emerald-400 font-semibold">{file.codec.split(' ')[0]}</span>
-                          <span className="text-zinc-600">·</span>
-                          <span className="text-amber-300 truncate max-w-[170px]">{file.audioTrack.split('(')[0]}</span>
-                          <span className="text-zinc-600">·</span>
-                          <span className="text-zinc-300">{file.duration}</span>
+                      <div className="mt-2 px-0.5">
+                        <h3 className="font-display font-medium text-xs lg:text-sm text-zinc-200 group-hover/card:text-white line-clamp-1">
+                          {file.title}
+                        </h3>
+                        <div className="text-[11px] text-zinc-500 flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0">{file.releaseYear}</span>
+                          <span className="shrink-0">·</span>
+                          <span className="text-emerald-400/80 shrink-0">{codecShort}</span>
+                          <span className="shrink-0">·</span>
+                          <span className="truncate">{file.duration}</span>
                         </div>
                       </div>
                     </div>

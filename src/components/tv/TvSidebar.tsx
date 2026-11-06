@@ -79,6 +79,38 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
   const isLocalActive = activeTab === 'local-media' || activeTab === 'library';
   const isSharedActive = activeTab === 'shared-libraries';
 
+  // Collapsed rail: frosted circular wells tinted to each source's accent
+  type CollapsedAccent = 'sky' | 'pink' | 'yellow' | 'orange' | 'zinc';
+  const collapsedBtnClass = 'justify-center w-12 h-12 p-0 mx-auto rounded-full';
+  const collapsedAccentStyles: Record<CollapsedAccent, { active: string; idle: string }> = {
+    sky: {
+      active: 'bg-sky-400/35 text-sky-50 shadow-[0_4px_18px_rgba(56,189,248,0.35)]',
+      idle: 'bg-sky-400/12 text-sky-300/70 group-hover:bg-sky-400/28 group-hover:text-sky-50',
+    },
+    pink: {
+      active: 'bg-pink-400/40 text-pink-50 shadow-[0_4px_18px_rgba(244,114,182,0.35)]',
+      idle: 'bg-pink-400/12 text-pink-300/70 group-hover:bg-pink-400/28 group-hover:text-pink-50',
+    },
+    yellow: {
+      active: 'bg-yellow-400/40 text-yellow-50 shadow-[0_4px_18px_rgba(250,204,21,0.32)]',
+      idle: 'bg-yellow-400/12 text-yellow-300/75 group-hover:bg-yellow-400/28 group-hover:text-yellow-50',
+    },
+    orange: {
+      active: 'bg-orange-400/40 text-orange-50 shadow-[0_4px_18px_rgba(251,146,60,0.35)]',
+      idle: 'bg-orange-400/12 text-orange-300/75 group-hover:bg-orange-400/28 group-hover:text-orange-50',
+    },
+    zinc: {
+      active: 'bg-white/25 text-white shadow-[0_4px_18px_rgba(255,255,255,0.12)]',
+      idle: 'bg-white/[0.11] text-white/55 group-hover:bg-white/20 group-hover:text-white',
+    },
+  };
+  const collapsedWellClass = (active: boolean, accent: CollapsedAccent = 'zinc') => {
+    const styles = collapsedAccentStyles[accent];
+    return `flex items-center justify-center w-full h-full rounded-full transition-all duration-200 ${
+      active ? styles.active : styles.idle
+    }`;
+  };
+
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState({
     local: true,
@@ -308,9 +340,11 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           )}
           <button
             onClick={onToggleCollapse}
-            className={`flex items-center justify-center shrink-0 ${
-              isCollapsed ? 'w-10 h-10 rounded-xl mx-auto' : 'w-8 h-8 rounded-full'
-            } bg-white/5 hover:bg-white/15 text-zinc-400 hover:text-white border border-white/10 transition-all focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer`}
+            className={`flex items-center justify-center shrink-0 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sky-400/50 cursor-pointer ${
+              isCollapsed
+                ? 'w-12 h-12 rounded-full mx-auto bg-white/[0.11] text-white/55 hover:bg-white/20 hover:text-white'
+                : 'w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 text-zinc-400 hover:text-white border border-white/10'
+            }`}
             title={isCollapsed ? "Expand sidebar (M)" : "Collapse sidebar (M)"}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -319,7 +353,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
         </div>
 
         {/* Primary Source Navigation */}
-        <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-2.5 w-full' : 'gap-2'}`}>
+        <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-3 w-full' : 'gap-2'}`}>
           {/* 1. LOCAL MEDIA FILES */}
           <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center w-full' : ''}`}>
             <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-0.5'}`}>
@@ -331,22 +365,28 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   setActiveSourceId(null);
                   if (!isCollapsed && !expandedSections.local) toggleSection('local');
                 }}
-                className={`group relative flex items-center ${
-                  isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'flex-1 justify-between px-3.5 py-3'
-                } rounded-2xl font-medium text-sm focus:outline-none ${
-                  isLocalActive
-                    ? 'text-white font-semibold'
-                    : 'text-zinc-300 hover:text-white'
+                className={`group relative flex items-center font-medium text-sm focus:outline-none ${
+                  isCollapsed
+                    ? collapsedBtnClass
+                    : `flex-1 justify-between px-3.5 py-3 rounded-2xl ${
+                        isLocalActive ? 'text-white font-semibold' : 'text-zinc-300 hover:text-white'
+                      }`
                 }`}
                 title="Local Media Files (Direct Storage)"
               >
                 <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
-                  <div className={`flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
-                    isLocalActive 
-                      ? 'bg-sky-500 text-black shadow-md shadow-sky-500/30' 
-                      : 'bg-white/10 text-sky-400'
-                  }`}>
-                    <HardDrive className="w-5 h-5" />
+                  <div
+                    className={
+                      isCollapsed
+                        ? collapsedWellClass(isLocalActive, 'sky')
+                        : `flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-full ${
+                            isLocalActive
+                              ? 'bg-sky-500 text-black shadow-md shadow-sky-500/30'
+                              : 'bg-white/10 text-sky-400'
+                          }`
+                    }
+                  >
+                    <HardDrive className={isCollapsed ? 'w-4 h-4' : 'w-5 h-5'} />
                   </div>
                   {!isCollapsed && (
                     <div className="flex flex-col text-left truncate">
@@ -435,27 +475,37 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   setActiveSourceId(null);
                   if (!isCollapsed && !expandedSections.shared) toggleSection('shared');
                 }}
-                className={`group relative flex items-center ${
-                  isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'flex-1 justify-between px-3.5 py-3'
-                } rounded-2xl font-medium text-sm focus:outline-none ${
-                  isSharedActive && !selectedPeerId
-                    ? 'text-white font-semibold'
-                    : 'text-zinc-300 hover:text-white'
+                className={`group relative flex items-center font-medium text-sm focus:outline-none ${
+                  isCollapsed
+                    ? collapsedBtnClass
+                    : `flex-1 justify-between px-3.5 py-3 rounded-2xl ${
+                        isSharedActive && !selectedPeerId
+                          ? 'text-white font-semibold'
+                          : 'text-zinc-300 hover:text-white'
+                      }`
                 }`}
                 title="Shared Libraries from other users"
               >
                 <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
-                  <div className={`relative flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
-                    isSharedActive && !selectedPeerId
-                      ? 'bg-pink-500 text-white' 
-                      : 'bg-white/10 text-pink-400'
-                  }`}>
-                    <Users className="w-5 h-5" />
-                    {/* Live sync dot */}
-                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </span>
+                  <div
+                    className={
+                      isCollapsed
+                        ? `relative ${collapsedWellClass(isSharedActive && !selectedPeerId, 'pink')}`
+                        : `relative flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-full ${
+                            isSharedActive && !selectedPeerId
+                              ? 'bg-pink-500 text-white'
+                              : 'bg-white/10 text-pink-400'
+                          }`
+                    }
+                  >
+                    <Users className={isCollapsed ? 'w-4 h-4' : 'w-5 h-5'} />
+                    {/* Live sync dot — expanded only */}
+                    {!isCollapsed && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                    )}
                   </div>
                   {!isCollapsed && (
                     <div className="flex flex-col text-left truncate">
@@ -508,7 +558,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   >
                     <div className="flex items-center gap-2 truncate min-w-0">
                       <div
-                        className={`w-6 h-6 rounded-lg ${peer.avatarColor} text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm ${
+                        className={`w-6 h-6 rounded-full ${peer.avatarColor} text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm ${
                           disconnected ? 'grayscale' : ''
                         }`}
                       >
@@ -580,13 +630,13 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
         </div>
 
         {/* Separator */}
-        <div className={`h-px bg-white/10 ${isCollapsed ? 'w-8 mx-auto my-0.5' : 'w-full'}`} />
+        <div className={`h-px bg-white/10 ${isCollapsed ? 'w-6 mx-auto my-0.5 opacity-40' : 'w-full'}`} />
 
         {/* Removable Devices and Network Shares Section */}
-        <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-2.5 w-full' : 'gap-3'}`}>
+        <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-3 w-full' : 'gap-3'}`}>
 
           {/* Sub-section 1: Removable Devices (USB / OTG / External SSD) */}
-          <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-1.5 w-full' : 'gap-1'}`}>
+          <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-3 w-full' : 'gap-1'}`}>
             {!isCollapsed && (
               <button
                 type="button"
@@ -620,20 +670,30 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                       addedAt: 'USB / OTG',
                     });
                   }}
-                  className={`group flex items-center ${
-                    isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'justify-between px-3 py-2'
-                  } rounded-xl text-xs transition-all text-left focus:outline-none cursor-pointer ${
-                    isSelected
-                      ? 'bg-yellow-500/15 text-white border border-yellow-400/40 shadow-sm font-semibold'
-                      : 'text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent'
+                  className={`group flex items-center text-xs transition-all text-left focus:outline-none cursor-pointer ${
+                    isCollapsed
+                      ? collapsedBtnClass
+                      : `justify-between px-3 py-2 rounded-xl ${
+                          isSelected
+                            ? 'bg-yellow-500/15 text-white border border-yellow-400/40 shadow-sm font-semibold'
+                            : 'text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent'
+                        }`
                   }`}
                   title={`${dev.name} (${dev.freeSpace} • ${dev.itemCount} files)`}
                   aria-pressed={isSelected}
                 >
                   <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${
-                      isSelected ? 'bg-yellow-400 text-black shadow-md shadow-yellow-500/20' : 'bg-yellow-400/10 text-yellow-400 group-hover:bg-yellow-400/20'
-                    }`}>
+                    <div
+                      className={
+                        isCollapsed
+                          ? collapsedWellClass(isSelected, 'yellow')
+                          : `flex items-center justify-center w-9 h-9 rounded-full transition-all ${
+                              isSelected
+                                ? 'bg-yellow-400 text-black shadow-md shadow-yellow-500/20'
+                                : 'bg-yellow-400/10 text-yellow-400 group-hover:bg-yellow-400/20'
+                            }`
+                      }
+                    >
                       <Usb className="w-4 h-4" />
                     </div>
                     {!isCollapsed && (
@@ -662,7 +722,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           </div>
 
           {/* Sub-section 2: Network Shares (SMB / NFS / DLNA) */}
-          <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-1.5 w-full' : 'gap-1 mt-1'}`}>
+          <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center gap-3 w-full' : 'gap-1 mt-1'}`}>
             {!isCollapsed && (
               <button
                 type="button"
@@ -688,19 +748,29 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                     onSelectPeer(null);
                     onSelectFolder?.(null);
                   }}
-                  className={`group flex items-center ${
-                    isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'justify-between px-3 py-2'
-                  } rounded-xl text-xs transition-all text-left focus:outline-none cursor-pointer ${
-                    isSelected
-                      ? 'bg-orange-500/15 text-white border border-orange-400/40 shadow-sm font-semibold'
-                      : 'text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent'
+                  className={`group flex items-center text-xs transition-all text-left focus:outline-none cursor-pointer ${
+                    isCollapsed
+                      ? collapsedBtnClass
+                      : `justify-between px-3 py-2 rounded-xl ${
+                          isSelected
+                            ? 'bg-orange-500/15 text-white border border-orange-400/40 shadow-sm font-semibold'
+                            : 'text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent'
+                        }`
                   }`}
                   title={`${share.name} (${share.address} • ${share.itemCount} files)`}
                 >
                   <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${
-                      isSelected ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20' : 'bg-orange-500/10 text-orange-400 group-hover:bg-orange-500/20'
-                    }`}>
+                    <div
+                      className={
+                        isCollapsed
+                          ? collapsedWellClass(isSelected, 'orange')
+                          : `flex items-center justify-center w-9 h-9 rounded-full transition-all ${
+                              isSelected
+                                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                                : 'bg-orange-500/10 text-orange-400 group-hover:bg-orange-500/20'
+                            }`
+                      }
+                    >
                       <Server className="w-4 h-4" />
                     </div>
                     {!isCollapsed && (
