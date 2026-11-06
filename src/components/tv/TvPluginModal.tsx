@@ -30,8 +30,6 @@ import {
 import { globalPluginEngine } from '../../lib/plugins/pluginEngine';
 import { POPULAR_COMMUNITY_DIRECTORY } from '../../lib/plugins/defaultPlugins';
 import { InstalledAddon, AddonManifest } from '../../lib/plugins/types';
-import { addonPaywall } from '../../lib/plugins/addonPaywall';
-import { TvAddonPaywallModal } from './TvAddonPaywallModal';
 
 interface TvPluginModalProps {
   isOpen: boolean;
@@ -46,10 +44,10 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
   const [directorySearch, setDirectorySearch] = useState('');
   const [directoryCategory, setDirectoryCategory] = useState<string>('all');
   
-  // Community Addons Paywall State
-  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
-  const [paywallTargetAddon, setPaywallTargetAddon] = useState<string | undefined>(undefined);
-  const [isCommunityUnlocked, setIsCommunityUnlocked] = useState<boolean>(() => addonPaywall.isUnlocked());
+  // The community-addons paywall was removed: it was client-side only
+  // (a localStorage flag with hardcoded voucher codes) and gated no real
+  // payment, so community addons are no longer locked behind it.
+  const isCommunityUnlocked = true;
 
   // Custom Install State
   const [installUrl, setInstallUrl] = useState('');
@@ -70,15 +68,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
   const [sandboxResponse, setSandboxResponse] = useState<string | null>(null);
   const [sandboxLatency, setSandboxLatency] = useState<number | null>(null);
   const [isSandboxLoading, setIsSandboxLoading] = useState(false);
-
-  // Sync with AddonPaywall
-  useEffect(() => {
-    setIsCommunityUnlocked(addonPaywall.isUnlocked());
-    const unsub = addonPaywall.subscribe((unlocked) => {
-      setIsCommunityUnlocked(unlocked);
-    });
-    return () => unsub();
-  }, []);
 
   // Sync with PluginEngine
   useEffect(() => {
@@ -125,13 +114,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
   const handleInstallFromUrl = async (urlToInstall?: string, addonName?: string) => {
     const targetUrl = urlToInstall || installUrl;
     if (!targetUrl.trim()) return;
-
-    // Check Paywall status
-    if (!isCommunityUnlocked) {
-      setPaywallTargetAddon(addonName || (urlToInstall ? 'Community Addon' : 'Custom Manifest'));
-      setIsPaywallOpen(true);
-      return;
-    }
 
     setIsInstalling(true);
     setInstallError(null);
@@ -230,30 +212,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
           </div>
 
           <div className="flex items-center gap-2">
-            {isCommunityUnlocked ? (
-              <button
-                onClick={() => {
-                  setPaywallTargetAddon(undefined);
-                  setIsPaywallOpen(true);
-                }}
-                className="px-2.5 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-sky-400/20 via-pink-400/20 to-amber-400/20 text-pink-300 border border-pink-400/40 flex items-center gap-1.5 shadow-sm hover:opacity-90 cursor-pointer"
-                title="Manage VIP Subscription Pass"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>VIP Active</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  setPaywallTargetAddon(undefined);
-                  setIsPaywallOpen(true);
-                }}
-                className="px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-95 text-white shadow-md shadow-pink-500/20 flex items-center gap-1.5 cursor-pointer"
-              >
-                <Lock className="w-3.5 h-3.5 text-amber-300" />
-                <span>Get VIP Pass</span>
-              </button>
-            )}
 
             <button
               onClick={() => globalPluginEngine.resetToDefaults()}
@@ -519,41 +477,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
           {activeTab === 'directory' && (
             <div className="space-y-4">
               {/* COMMUNITY ADDONS PAYWALL BANNER */}
-              {!isCommunityUnlocked && (
-                <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#170e28] via-[#241028] to-[#12162a] border border-pink-500/35 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in duration-200">
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 via-pink-500 to-amber-300 p-0.5 shrink-0 shadow-lg shadow-pink-500/20">
-                      <div className="w-full h-full bg-[#13141f] rounded-[10px] flex items-center justify-center text-pink-300">
-                        <Sparkles className="w-5 h-5 text-amber-300" />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-white text-sm sm:text-base font-display">
-                          Community Addons VIP Pass Required
-                        </h3>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-pink-500/20 text-pink-300 border border-pink-500/35 flex items-center gap-1">
-                          <Lock className="w-2.5 h-2.5" /> VIP Pass
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-300 mt-0.5 max-w-xl">
-                        Install community stream scrapers (Torrentio, CyberFlix, Orion), unlock 4K HDR streams, and connect Debrid accounts with the Community Addons Pass.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setPaywallTargetAddon(undefined);
-                      setIsPaywallOpen(true);
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-400 via-pink-500 to-amber-300 hover:opacity-95 text-black font-extrabold text-xs shadow-lg shadow-pink-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 fill-black" />
-                    <span>Unlock VIP Pass ($4.99/mo)</span>
-                  </button>
-                </div>
-              )}
 
               {/* FILTER BAR */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -635,7 +558,7 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                             <Check className="w-3.5 h-3.5" />
                             Installed
                           </span>
-                        ) : isCommunityUnlocked ? (
+                        ) : (
                           <button
                             onClick={() => handleInstallFromUrl(item.manifestUrl, item.name)}
                             disabled={isInstalling}
@@ -643,17 +566,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                           >
                             <Download className="w-3.5 h-3.5" />
                             Install Addon
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setPaywallTargetAddon(item.name);
-                              setIsPaywallOpen(true);
-                            }}
-                            className="px-3 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-500/25 to-amber-500/25 hover:from-pink-500/35 hover:to-amber-500/35 text-pink-200 border border-pink-500/40 flex items-center gap-1.5 transition shadow cursor-pointer"
-                          >
-                            <Lock className="w-3.5 h-3.5 text-amber-300" />
-                            Unlock to Install
                           </button>
                         )}
                       </div>
@@ -675,28 +587,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
               </div>
 
               {/* COMMUNITY PAYWALL NOTICE */}
-              {!isCommunityUnlocked && (
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-pink-500/15 to-purple-500/15 border border-pink-500/35 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-pink-500/20 text-pink-300 border border-pink-500/30">
-                      <Lock className="w-4 h-4 text-amber-300" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-white">Community VIP Pass Required for Custom URLs</p>
-                      <p className="text-zinc-300 text-[11px]">Install any 3rd-party Stremio addon, custom scraper, or private repository with VIP.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setPaywallTargetAddon('Custom Manifest URL');
-                      setIsPaywallOpen(true);
-                    }}
-                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-sky-400 via-pink-500 to-amber-300 text-black font-extrabold text-xs shadow shrink-0 cursor-pointer"
-                  >
-                    Unlock VIP Pass
-                  </button>
-                </div>
-              )}
 
               <div className="space-y-3">
                 <label className="text-xs font-medium text-white/80">Addon Manifest URL</label>
@@ -708,7 +598,7 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                     placeholder="e.g. https://torrentio.strem.fun/manifest.json or stremio://..."
                     className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 font-mono"
                   />
-                  {isCommunityUnlocked ? (
+                  {(
                     <button
                       onClick={() => handleInstallFromUrl()}
                       disabled={isInstalling || !installUrl.trim()}
@@ -720,17 +610,6 @@ export const TvPluginModal: React.FC<TvPluginModalProps> = ({ isOpen, onClose })
                         <Download className="w-4 h-4" />
                       )}
                       Verify & Install
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setPaywallTargetAddon('Custom Manifest URL');
-                        setIsPaywallOpen(true);
-                      }}
-                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-95 text-white text-sm font-bold flex items-center gap-2 transition shadow cursor-pointer shrink-0"
-                    >
-                      <Lock className="w-4 h-4 text-amber-300" />
-                      Unlock VIP
                     </button>
                   )}
                 </div>
@@ -1067,19 +946,6 @@ app.listen(7000);`}
             </div>
           </div>
         )}
-
-        {/* Community Addons Paywall Modal */}
-        <TvAddonPaywallModal
-          isOpen={isPaywallOpen}
-          onClose={() => {
-            setIsPaywallOpen(false);
-            setPaywallTargetAddon(undefined);
-          }}
-          targetAddonName={paywallTargetAddon}
-          onUnlockedSuccess={() => {
-            setIsCommunityUnlocked(true);
-          }}
-        />
 
       </div>
     </div>

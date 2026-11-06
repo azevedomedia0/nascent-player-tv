@@ -27,7 +27,6 @@ import {
 } from 'lucide-react';
 import { TvTab } from './TvTopNav';
 import { AppLogo } from '../AppLogo';
-import { addonPaywall } from '../../lib/plugins/addonPaywall';
 
 export interface LocalFolderSource {
   id: string;
@@ -632,15 +631,6 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   <div className="flex flex-col truncate min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-white text-xs truncate">Community Addons</span>
-                      {addonPaywall.isUnlocked() ? (
-                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-pink-500/25 text-pink-300 border border-pink-500/40 shrink-0 flex items-center gap-0.5">
-                          <Sparkles className="w-2.5 h-2.5 text-amber-300" /> VIP
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0 flex items-center gap-0.5">
-                          <Lock className="w-2.5 h-2.5" /> Pass
-                        </span>
-                      )}
                     </div>
                     <span className="text-[10px] text-indigo-300/70 font-normal truncate">Stremio Protocol v3</span>
                   </div>

@@ -21,8 +21,6 @@ import {
 import { FeaturedMovie } from './TvHeroBillboard';
 import { TRENDING_PLATFORMS } from '../../App';
 import { globalPluginEngine } from '../../lib/plugins/pluginEngine';
-import { addonPaywall } from '../../lib/plugins/addonPaywall';
-import { TvAddonPaywallModal } from './TvAddonPaywallModal';
 
 export interface StreamSource {
   id: string;
@@ -56,8 +54,6 @@ export const TvStreamSelectorModal: React.FC<TvStreamSelectorModalProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'official' | 'debrid' | 'p2p'>('all');
   const [pluginStreams, setPluginStreams] = useState<StreamSource[]>([]);
-  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
-  const [paywallTarget, setPaywallTarget] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!isOpen || !movie) {
@@ -463,15 +459,12 @@ export const TvStreamSelectorModal: React.FC<TvStreamSelectorModalProps> = ({
         {/* Stream Source List */}
         <div className="p-6 overflow-y-auto no-scrollbar space-y-3 flex-1">
           {filteredStreams.map((stream) => {
-            const isCommunityStream = stream.type === 'addon' || stream.type === 'p2p';
-            const isLocked = isCommunityStream && !addonPaywall.isUnlocked();
+            // The community-addons paywall was removed: it was client-side
+            // only (a localStorage flag with hardcoded voucher codes) and
+            // gated no real payment. All streams are selectable.
+            const isLocked = false;
 
             const handleClick = () => {
-              if (isLocked) {
-                setPaywallTarget(`${stream.provider} 4K Stream`);
-                setIsPaywallOpen(true);
-                return;
-              }
               onSelectStream(movie, stream);
             };
 
@@ -576,15 +569,6 @@ export const TvStreamSelectorModal: React.FC<TvStreamSelectorModalProps> = ({
           })}
         </div>
 
-        {/* Community Addons Paywall Modal */}
-        <TvAddonPaywallModal
-          isOpen={isPaywallOpen}
-          onClose={() => {
-            setIsPaywallOpen(false);
-            setPaywallTarget(undefined);
-          }}
-          targetAddonName={paywallTarget}
-        />
       </div>
     </div>
   );

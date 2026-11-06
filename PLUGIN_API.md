@@ -388,5 +388,5 @@ In the app:
 ## 7. Security & Sandboxing Rules
 
 1. **CORS Headers**: All community addons must send `Access-Control-Allow-Origin: *`.
-2. **Safe Secrets**: Addon configuration keys (like Real-Debrid tokens) are stored locally in the user's browser sandbox and passed securely via query parameters or custom URL segments (e.g. `https://addon.com/{api_key}/manifest.json`).
+2. **Safe Secrets**: Never put API keys or tokens in an addon URL (e.g. `https://addon.com/{api_key}/manifest.json`) — URLs leak into server logs, browser history, and the addon host's logs. Debrid tokens must not be entered in this app at all: the Debrid token field was removed, and any token previously stored in the browser is stripped on load (see `src/lib/plugins/pluginEngine.ts`). If an addon needs a secret, configure it with that addon provider directly, outside this app.
 3. **No Native Execution**: All remote plugins execute strictly via HTTP REST. No executable binaries are permitted from untrusted URLs. Local media decoders use browser-standard WebCodecs and sandboxed WebAssembly.
