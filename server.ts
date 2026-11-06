@@ -8,14 +8,84 @@ import fs from "fs";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import {
+  validateProxyUrl,
+  resolveMediaPath,
+  sanitizeMediaInput,
+  sanitizeUploadFilename,
+  clampBenchmarkBytes,
+  MAX_UPLOAD_BYTES,
+} from "./src/lib/security";
 
 dotenv.config();
 
-const PORT = 3001;
+// SECURITY: bind localhost by default. Set HOST=0.0.0.0 only behind a
+// reverse proxy that adds authentication — this server has no built-in
+// login, so exposing it directly also exposes every /api endpoint.
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) || 3001 : 3001;
+const HOST = process.env.HOST || "127.0.0.1";
+// Optional shared token. When NASCENT_API_TOKEN is set, mutating API
+// calls and the sensitive GET endpoints (proxy, benchmark) require
+// `Authorization: Bearer <token>` or `x-api-token: <token>`.
+const API_TOKEN = process.env.NASCENT_API_TOKEN || "";
 const app = express();
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.disable("x-powered-by");
+// JSON bodies were previously capped at 50 MB — far more than any API
+// call here needs. Uploads use a raw stream, not JSON, so 1 MB is ample.
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+// Minimal security headers (no extra dependency).
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+// Tiny in-memory rate limiter — no dependency, per-IP, 60 s windows.
+// 120 req/min for /api in general, 20 req/min for expensive endpoints
+// (proxy, Gemini enrich, upload, benchmark, torrent stream).
+const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+function rateLimit(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!req.path.startsWith("/api/")) return next();
+  const sensitive =
+    req.path.startsWith("/api/stremio/proxy") ||
+    req.path.startsWith("/api/metadata/enrich") ||
+    req.path.startsWith("/api/upload") ||
+    req.path.startsWith("/api/stream/benchmark") ||
+    req.path.startsWith("/api/stremio/torrent/stream");
+  const limit = sensitive ? 20 : 120;
+  const key = `${req.ip || "unknown"}:${sensitive ? "sensitive" : "api"}`;
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + 60_000 });
+    return next();
+  }
+  bucket.count += 1;
+  if (bucket.count > limit) {
+    return res.status(429).json({ error: "Too many requests, try again later" });
+  }
+  return next();
+}
+app.use(rateLimit);
+
+// Optional token auth (see API_TOKEN above). Off by default so local
+// use is unchanged; enable it before exposing the server anywhere.
+app.use("/api", (req, res, next) => {
+  if (!API_TOKEN) return next();
+  const sensitiveGet =
+    req.method === "GET" &&
+    (req.path.startsWith("/stremio/proxy") || req.path.startsWith("/stream/benchmark"));
+  if (req.method === "GET" && !sensitiveGet) return next();
+  const supplied = req.get("authorization")?.replace(/^Bearer\s+/i, "") || req.get("x-api-token") || "";
+  if (supplied !== API_TOKEN) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  return next();
+});
 
 // Establish directories
 const DATA_DIR = path.resolve("./data");
@@ -266,14 +336,22 @@ app.get("/api/media", (req, res) => {
 });
 
 // 2. Add custom video (or remote link)
+// SECURITY: the request body is whitelisted via sanitizeMediaInput().
+// The old code spread `...req.body` after the generated id, so a caller
+// could overwrite `id`, `isLocal`, `filename`, etc. — including pointing
+// `filename` at `../../server.ts` for the stream/delete endpoints.
 app.post("/api/media/add", (req, res) => {
   const media = readJSON(MEDIA_FILE, defaultMediaItems);
+  const safe = sanitizeMediaInput(req.body);
+  if (!safe) {
+    return res.status(400).json({ error: "A valid title or http(s) url is required" });
+  }
   const newItem = {
     id: "media_" + Math.random().toString(36).substr(2, 9),
     playCount: 0,
     playProgress: 0,
     subtitles: [],
-    ...req.body
+    ...safe,
   };
   media.push(newItem);
   writeJSON(MEDIA_FILE, media);
@@ -286,7 +364,9 @@ app.post("/api/media/progress", (req, res) => {
   const media = readJSON(MEDIA_FILE, defaultMediaItems);
   const idx = media.findIndex((m: any) => m.id === id);
   if (idx !== -1) {
-    media[idx].playProgress = playProgress;
+    if (typeof playProgress === "number" && Number.isFinite(playProgress)) {
+      media[idx].playProgress = Math.max(0, playProgress);
+    }
     if (playCountIncrement) {
       media[idx].playCount = (media[idx].playCount || 0) + 1;
       media[idx].lastPlayed = new Date().toISOString();
@@ -305,10 +385,13 @@ app.delete("/api/media/:id", (req, res) => {
   const idx = media.findIndex((m: any) => m.id === id);
   if (idx !== -1) {
     const item = media[idx];
-    // If it is a local file, we might also want to delete it from disk
+    // If it is a local file, we might also want to delete it from disk.
+    // SECURITY: resolveMediaPath() rejects `../`, absolute paths and
+    // anything outside MEDIA_DIR — the old path.join() would delete
+    // arbitrary files named in a crafted media record.
     if (item.isLocal && item.filename) {
-      const localFilePath = path.join(MEDIA_DIR, item.filename);
-      if (fs.existsSync(localFilePath)) {
+      const localFilePath = resolveMediaPath(MEDIA_DIR, item.filename);
+      if (localFilePath && fs.existsSync(localFilePath)) {
         try {
           fs.unlinkSync(localFilePath);
         } catch (e) {
@@ -334,15 +417,27 @@ app.get("/api/stream", (req, res) => {
     return res.status(404).send("Video file metadata not found");
   }
 
-  // If it's a remote file stream, we either proxy or redirect
+  // If it's a remote file stream, we either proxy or redirect.
+  // Only http(s) targets are allowed — a stored `javascript:` / `file:`
+  // URL must never become a redirect.
   if (!video.isLocal) {
+    try {
+      const target = new URL(String(video.url));
+      if (target.protocol !== "http:" && target.protocol !== "https:") {
+        return res.status(400).send("Invalid remote stream URL");
+      }
+    } catch {
+      return res.status(400).send("Invalid remote stream URL");
+    }
     return res.redirect(video.url);
   }
 
-  // Handle local filesystem stream
-  const filePath = path.join(MEDIA_DIR, video.filename);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send(`Physical stream source missing on disc at: ${filePath}`);
+  // Handle local filesystem stream.
+  // SECURITY: resolveMediaPath() rejects traversal (`../../.env`, etc.)
+  // and the error no longer leaks the absolute on-disk path.
+  const filePath = resolveMediaPath(MEDIA_DIR, video.filename);
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.status(404).send("Physical stream source missing on disc");
   }
 
   const stat = fs.statSync(filePath);
@@ -409,9 +504,12 @@ app.get("/api/stream/abr/manifest", (req, res) => {
 });
 
 // Stream Engine Diagnostic & Benchmark Endpoint
+// SECURITY: the probe size is clamped to 1 MiB. It was previously
+// `Buffer.alloc(parseInt(req.query.bytes))` with no upper bound, so
+// `?bytes=1000000000` allocated ~1 GB per request.
 app.get("/api/stream/benchmark", (req, res) => {
   const t0 = process.hrtime.bigint();
-  const sampleSize = parseInt(req.query.bytes as string) || 64 * 1024; // 64KB default probe
+  const sampleSize = clampBenchmarkBytes(req.query.bytes);
   const dummyBuffer = Buffer.alloc(sampleSize, 0);
   const t1 = process.hrtime.bigint();
   const serverLatencyUs = Number(t1 - t0) / 1000;
@@ -423,6 +521,11 @@ app.get("/api/stream/benchmark", (req, res) => {
 });
 
 // 4. Custom binary / octet file stream upload
+// SECURITY: previously uncapped, with no extension check — any file of
+// any size could be written to disk. Now: video extensions only,
+// 2 GiB cap (enforced on Content-Length and on the live stream, with
+// the partial file removed on overflow), and the save path is resolved
+// inside MEDIA_DIR.
 app.post("/api/upload", (req, res) => {
   const fileName = req.query.fileName as string;
   const fileType = req.query.type as string || "movie";
@@ -430,13 +533,46 @@ app.post("/api/upload", (req, res) => {
     return res.status(400).json({ error: "fileName is required as a query parameter" });
   }
 
-  const cleanFileName = Date.now() + "_" + fileName.replace(/[^a-zA-Z0-9.\-_]/g, "");
-  const savePath = path.join(MEDIA_DIR, cleanFileName);
+  const cleanFileName = sanitizeUploadFilename(fileName);
+  if (!cleanFileName) {
+    return res.status(400).json({
+      error: "Only video files are accepted (.mp4, .mkv, .webm, .mov, .m4v, .avi)",
+    });
+  }
+  const declaredLength = Number(req.headers["content-length"]);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_UPLOAD_BYTES) {
+    return res.status(413).json({ error: "Upload exceeds the 2 GiB limit" });
+  }
+  const savePath = resolveMediaPath(MEDIA_DIR, cleanFileName);
+  if (!savePath) {
+    return res.status(400).json({ error: "Invalid fileName" });
+  }
 
   const writeStream = fs.createWriteStream(savePath);
+  let received = 0;
+  let aborted = false;
+  const abortUpload = () => {
+    if (aborted) return;
+    aborted = true;
+    req.destroy();
+    writeStream.destroy();
+    try {
+      fs.unlinkSync(savePath);
+    } catch {
+      // Partial file may not exist yet — nothing to clean up.
+    }
+    if (!res.headersSent) {
+      res.status(413).json({ error: "Upload exceeds the 2 GiB limit" });
+    }
+  };
+  req.on("data", (chunk: Buffer) => {
+    received += chunk.length;
+    if (received > MAX_UPLOAD_BYTES) abortUpload();
+  });
   req.pipe(writeStream);
 
   writeStream.on("finish", () => {
+    if (aborted) return;
     const size = fs.statSync(savePath).size;
     const media = readJSON(MEDIA_FILE, defaultMediaItems);
 
@@ -473,7 +609,9 @@ app.post("/api/upload", (req, res) => {
 
   writeStream.on("error", (err) => {
     console.error("Upload streaming write failure:", err);
-    res.status(500).json({ error: "Failed to write file to local media vault" });
+    if (!aborted && !res.headersSent) {
+      res.status(500).json({ error: "Failed to write file to local media vault" });
+    }
   });
 });
 
@@ -1068,31 +1206,72 @@ app.delete("/api/history", (req, res) => {
 });
 
 // Stremio Addon universal proxy to bypass CORS
+// SECURITY: this was an open SSRF proxy — any caller could make the
+// server fetch an arbitrary URL, including cloud metadata
+// (http://169.254.169.254/...) and localhost/internal services.
+// Now validateProxyUrl() enforces https-only and an explicit hostname
+// allowlist (bundled addon hosts, plus STREMIO_PROXY_ALLOWLIST), with
+// a 10 s timeout and a 5 MB response cap. Addon hosts not on the list
+// are rejected with 400 — add them explicitly via the env var.
 app.get("/api/stremio/proxy", async (req, res) => {
-  let urlParam = req.query.url as string;
-  if (!urlParam) {
-    return res.status(400).json({ error: "Missing url parameter" });
+  let target: URL;
+  try {
+    target = validateProxyUrl(req.query.url);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Proxy host is not allowed" });
   }
-
-  // Handle stremio:// protocol
-  if (urlParam.startsWith("stremio://")) {
-    urlParam = urlParam.replace("stremio://", "https://");
-  }
+  const urlParam = target.toString();
 
   try {
-    const response = await fetch(urlParam, {
+    const response = await fetch(target, {
       headers: {
         "User-Agent": "Mozilla/5.0 (IINA Core Applet)",
         "Accept": "application/json"
-      }
+      },
+      // Node fetch follows redirects; re-validate the final URL so a
+      // redirect to an internal host cannot bypass the allowlist.
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
     });
-    
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (location) {
+        try {
+          const redirectTarget = validateProxyUrl(new URL(location, target).toString());
+          const redirectResponse = await fetch(redirectTarget, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (IINA Core Applet)",
+              "Accept": "application/json",
+            },
+            redirect: "manual",
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!redirectResponse.ok) {
+            throw new Error(`Failed to fetch Stremio resource: status ${redirectResponse.status}`);
+          }
+          const redirectText = await redirectResponse.text();
+          if (redirectText.length > 5 * 1024 * 1024) {
+            return res.status(502).json({ error: "Addon response too large" });
+          }
+          const redirectData = JSON.parse(redirectText);
+          return res.json(redirectData);
+        } catch (err: any) {
+          return res.status(400).json({ error: err.message || "Proxy host is not allowed" });
+        }
+      }
+    }
+
     if (!response.ok) {
       throw new Error(`Failed to fetch Stremio resource: status ${response.status}`);
     }
 
-    const data = await response.json();
-    
+    const text = await response.text();
+    if (text.length > 5 * 1024 * 1024) {
+      return res.status(502).json({ error: "Addon response too large" });
+    }
+    const data = JSON.parse(text);
+
     // Enrich stream formats to make Torrentio or any torrent stream fully functional
     if (urlParam.includes("/stream/") && data && Array.isArray(data.streams)) {
       data.streams = data.streams.map((stream: any) => {
@@ -1517,8 +1696,15 @@ async function startServer() {
     });
   }
 
-  server.listen(PORT, "0.0.0.0", () => {
-    console.log(`[IINA SERVER] Streaming container online on http://0.0.0.0:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`[IINA SERVER] Streaming container online on http://${HOST}:${PORT}`);
+    if (HOST === "0.0.0.0") {
+      console.warn(
+        "[IINA SERVER] WARNING: listening on all interfaces with no built-in " +
+          "authentication. Put it behind a reverse proxy with auth, or set " +
+          "NASCENT_API_TOKEN and HOST=127.0.0.1. See SECURITY.md."
+      );
+    }
   });
 }
 
