@@ -304,7 +304,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [cacheCleared, setCacheCleared] = useState(false);
 
   // Peers & Library Shares
-  const [shareLibraryEnabled, setShareLibraryEnabled] = useState(true);
   const [autoAcceptLanPeers, setAutoAcceptLanPeers] = useState(false);
   const [peerDiscovery, setPeerDiscovery] = useState(true);
   const [shareQuality, setShareQuality] = useState<'low' | 'med' | 'high'>('high');
@@ -1533,19 +1532,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
                       <div>
-                        <h4 className="text-sm font-semibold text-white">Share My Library</h4>
-                        <p className="text-xs text-zinc-400">Allow trusted peers to browse and stream your titles</p>
-                      </div>
-                      <button
-                        onClick={() => setShareLibraryEnabled(!shareLibraryEnabled)}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${shareLibraryEnabled ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${shareLibraryEnabled ? 'right-0.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div>
                         <h4 className="text-sm font-semibold text-white">LAN Peer Discovery</h4>
                         <p className="text-xs text-zinc-400">Broadcast presence on the local network</p>
                       </div>
@@ -1589,6 +1575,86 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                           </button>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Add Peer — 4th grid tile */}
+                    <div className="p-4 rounded-2xl bg-white/5 border border-pink-500/25 flex flex-col gap-2 justify-between">
+                      {!isAddPeerOpen ? (
+                        <div className="flex items-center justify-between gap-3 h-full">
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-semibold text-white flex items-center gap-1.5">
+                              <UserPlus className="w-4 h-4 text-pink-400 shrink-0" />
+                              Add Peer
+                            </h4>
+                            <p className="text-xs text-zinc-400">Connect a friend by name and invite code</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsAddPeerOpen(true)}
+                            className="px-3 py-1.5 rounded-full bg-pink-500 hover:bg-pink-400 text-white text-xs font-bold transition shrink-0 flex items-center gap-1"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Add
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <span className="text-xs font-semibold text-zinc-400 uppercase">Add Peer</span>
+                          <input
+                            type="text"
+                            value={addPeerName}
+                            onChange={(e) => setAddPeerName(e.target.value)}
+                            placeholder="Display name"
+                            className="px-2.5 py-1.5 rounded-xl bg-black/30 border border-white/10 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-pink-400"
+                          />
+                          <input
+                            type="text"
+                            value={addPeerCode}
+                            onChange={(e) => setAddPeerCode(e.target.value.toUpperCase())}
+                            placeholder="PEER-XXXX-MESH"
+                            className="px-2.5 py-1.5 rounded-xl bg-black/30 border border-white/10 text-xs text-white placeholder-zinc-500 font-mono focus:outline-none focus:border-pink-400"
+                          />
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAddPeerOpen(false);
+                                setAddPeerName('');
+                                setAddPeerCode('');
+                                setAddPeerFeedback(null);
+                              }}
+                              className="flex-1 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!addPeerName.trim() || !addPeerCode.trim()) return;
+                                setAddPeerFeedback(`Connecting to ${addPeerName.trim()}…`);
+                                setTimeout(() => {
+                                  setAddPeerFeedback(`Peer “${addPeerName.trim()}” added.`);
+                                  setAddPeerName('');
+                                  setAddPeerCode('');
+                                  setTimeout(() => {
+                                    setAddPeerFeedback(null);
+                                    setIsAddPeerOpen(false);
+                                  }, 2000);
+                                }, 700);
+                              }}
+                              className="flex-1 py-1.5 rounded-full bg-pink-500 hover:bg-pink-400 text-white text-xs font-bold transition"
+                            >
+                              Connect
+                            </button>
+                          </div>
+                          {addPeerFeedback && (
+                            <p className="text-[10px] text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 shrink-0" />
+                              {addPeerFeedback}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1744,111 +1810,12 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   )}
                 </div>
 
-                {/* Add Peer */}
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-pink-500/10 via-white/5 to-sky-500/10 border border-pink-500/25 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-pink-500/20 border border-pink-500/35 text-pink-300 flex items-center justify-center shrink-0">
-                        <UserPlus className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-sm font-semibold text-white">Add Peer</h4>
-                        <p className="text-xs text-zinc-400 truncate">Connect a friend by name and peer invite code</p>
-                      </div>
-                    </div>
-                    {!isAddPeerOpen && (
-                      <button
-                        type="button"
-                        onClick={() => setIsAddPeerOpen(true)}
-                        className="px-3.5 py-2 rounded-xl bg-pink-500 hover:bg-pink-400 text-white text-xs font-bold transition shrink-0 flex items-center gap-1.5"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Add Peer
-                      </button>
-                    )}
-                  </div>
-
-                  {isAddPeerOpen && (
-                    <div className="space-y-2.5 pt-1">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          value={addPeerName}
-                          onChange={(e) => setAddPeerName(e.target.value)}
-                          placeholder="Peer display name"
-                          className="px-3 py-2.5 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-pink-400"
-                        />
-                        <input
-                          type="text"
-                          value={addPeerCode}
-                          onChange={(e) => setAddPeerCode(e.target.value.toUpperCase())}
-                          placeholder="PEER-XXXX-MESH"
-                          className="px-3 py-2.5 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder-zinc-500 font-mono focus:outline-none focus:border-pink-400"
-                        />
-                      </div>
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAddPeerOpen(false);
-                            setAddPeerName('');
-                            setAddPeerCode('');
-                            setAddPeerFeedback(null);
-                          }}
-                          className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!addPeerName.trim() || !addPeerCode.trim()) return;
-                            setAddPeerFeedback(`Connecting to ${addPeerName.trim()} (${addPeerCode.trim()})…`);
-                            setTimeout(() => {
-                              setAddPeerFeedback(`Peer “${addPeerName.trim()}” added. Waiting for library handshake.`);
-                              setAddPeerName('');
-                              setAddPeerCode('');
-                              setTimeout(() => {
-                                setAddPeerFeedback(null);
-                                setIsAddPeerOpen(false);
-                              }, 2500);
-                            }, 800);
-                          }}
-                          className="px-3.5 py-2 rounded-xl bg-pink-500 hover:bg-pink-400 text-white text-xs font-bold transition flex items-center gap-1.5"
-                        >
-                          <UserPlus className="w-3.5 h-3.5" />
-                          Connect Peer
-                        </button>
-                      </div>
-                      {addPeerFeedback && (
-                        <p className="text-xs text-emerald-400 flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          {addPeerFeedback}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
                 <div>
                   <div className="flex items-center justify-between mb-3 gap-3">
                     <h4 className="text-sm font-semibold text-white">Connected Library Shares</h4>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[11px] text-zinc-400 font-mono">
-                        {SHARED_PEER_LIBRARIES.filter((p) => p.status !== 'offline').length} online
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAddPeerOpen(true);
-                          setActiveCategory('peers');
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-pink-500/15 hover:bg-pink-500/25 text-pink-300 border border-pink-500/30 text-[10px] font-bold transition flex items-center gap-1"
-                      >
-                        <Plus className="w-3 h-3" />
-                        Add Peer
-                      </button>
-                    </div>
+                    <span className="text-[11px] text-zinc-400 font-mono shrink-0">
+                      {SHARED_PEER_LIBRARIES.filter((p) => p.status !== 'offline').length} online
+                    </span>
                   </div>
                   <div className="flex flex-col gap-2.5">
                     {SHARED_PEER_LIBRARIES.map((peer) => (
