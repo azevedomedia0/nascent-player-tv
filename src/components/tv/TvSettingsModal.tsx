@@ -313,6 +313,71 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
       isOfficial: false,
       rating: '4.6',
       downloads: '42K'
+    },
+    {
+      id: 'sonarr',
+      name: 'Sonarr TV Automation',
+      version: 'v4.0.12',
+      author: 'Sonarr Team',
+      category: 'catalogs',
+      description: 'Smart TV series library manager — monitors releases, grabs episodes, and organizes your show vault.',
+      enabled: false,
+      isInstalled: false,
+      isOfficial: false,
+      rating: '4.9',
+      downloads: '312K'
+    },
+    {
+      id: 'radarr',
+      name: 'Radarr Movie Automation',
+      version: 'v5.14.0',
+      author: 'Radarr Team',
+      category: 'catalogs',
+      description: 'Automated movie collection manager — finds, downloads, and renames films to match your library.',
+      enabled: false,
+      isInstalled: false,
+      isOfficial: false,
+      rating: '4.9',
+      downloads: '298K'
+    },
+    {
+      id: 'prowlarr',
+      name: 'Prowlarr Indexer Manager',
+      version: 'v1.29.0',
+      author: 'Prowlarr Team',
+      category: 'streaming',
+      description: 'Unified indexer manager that syncs torrent and Usenet trackers across Sonarr, Radarr, and Lidarr.',
+      enabled: false,
+      isInstalled: false,
+      isOfficial: false,
+      rating: '4.8',
+      downloads: '241K'
+    },
+    {
+      id: 'jackett',
+      name: 'Jackett Indexer Proxy',
+      version: 'v0.22.0',
+      author: 'Jackett Community',
+      category: 'streaming',
+      description: 'API proxy that translates dozens of torrent trackers into a single Torznab/Potato feed for download clients.',
+      enabled: false,
+      isInstalled: false,
+      isOfficial: false,
+      rating: '4.7',
+      downloads: '380K'
+    },
+    {
+      id: 'bazarr',
+      name: 'Bazarr Subtitle Manager',
+      version: 'v1.5.1',
+      author: 'Bazarr Team',
+      category: 'subtitles',
+      description: 'Companion for Sonarr & Radarr that automatically downloads and manages subtitles for your media library.',
+      enabled: false,
+      isInstalled: false,
+      isOfficial: false,
+      rating: '4.8',
+      downloads: '195K'
     }
   ]);
 
@@ -566,8 +631,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#131313]/96 backdrop-blur-2xl flex items-center justify-center p-4 lg:p-8 select-none animate-in fade-in duration-200">
-      <div className="relative w-full max-w-6xl h-[min(860px,90vh)] bg-zinc-950/90 border border-white/20 rounded-[32px] overflow-hidden shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 nascent-app-bg flex items-center justify-center p-4 lg:p-8 select-none animate-in fade-in duration-200">
+      <div className="relative w-full max-w-6xl h-[min(860px,90vh)] bg-black/45 backdrop-blur-xl border border-white/20 rounded-[32px] overflow-hidden shadow-2xl flex flex-col">
         {/* Top Header */}
         <div className="px-8 py-4.5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">

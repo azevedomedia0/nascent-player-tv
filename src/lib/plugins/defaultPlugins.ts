@@ -272,6 +272,223 @@ export const DEFAULT_COMMUNITY_ADDONS: InstalledAddon[] = [
     isBuiltIn: false,
     healthStatus: 'healthy',
     latencyMs: 210
+  },
+  {
+    manifest: {
+      id: 'org.sonarr.automation',
+      name: 'Sonarr TV Automation',
+      version: '4.0.12',
+      description: 'Smart TV series library manager — monitors releases, grabs episodes, and organizes your show vault via Sonarr API.',
+      author: 'Sonarr Team',
+      icon: 'https://raw.githubusercontent.com/Sonarr/Sonarr/develop/Logo/256.png',
+      types: ['series'],
+      resources: ['catalog', 'meta'],
+      catalogs: [
+        {
+          type: 'series',
+          id: 'sonarr-library',
+          name: 'Sonarr Library',
+          extra: [{ name: 'search', isRequired: false }]
+        }
+      ],
+      behaviorHints: {
+        configurable: true,
+        configurationRequired: true
+      },
+      configurable: {
+        settings: [
+          {
+            key: 'baseUrl',
+            label: 'Sonarr Base URL',
+            type: 'string',
+            default: 'http://localhost:8989',
+            description: 'Local or remote Sonarr instance URL'
+          },
+          {
+            key: 'apiKey',
+            label: 'API Key',
+            type: 'password',
+            default: '',
+            description: 'Sonarr Settings → General → API Key'
+          }
+        ]
+      }
+    },
+    transportUrl: 'addon://internal.sonarr/manifest.json',
+    enabled: false,
+    installedAt: '2025-01-03T00:00:00.000Z',
+    isBuiltIn: false,
+    healthStatus: 'healthy',
+    latencyMs: 24
+  },
+  {
+    manifest: {
+      id: 'org.radarr.automation',
+      name: 'Radarr Movie Automation',
+      version: '5.14.0',
+      description: 'Automated movie collection manager — finds, downloads, and renames films via Radarr API.',
+      author: 'Radarr Team',
+      icon: 'https://raw.githubusercontent.com/Radarr/Radarr/develop/Logo/256.png',
+      types: ['movie'],
+      resources: ['catalog', 'meta'],
+      catalogs: [
+        {
+          type: 'movie',
+          id: 'radarr-library',
+          name: 'Radarr Library',
+          extra: [{ name: 'search', isRequired: false }]
+        }
+      ],
+      behaviorHints: {
+        configurable: true,
+        configurationRequired: true
+      },
+      configurable: {
+        settings: [
+          {
+            key: 'baseUrl',
+            label: 'Radarr Base URL',
+            type: 'string',
+            default: 'http://localhost:7878',
+            description: 'Local or remote Radarr instance URL'
+          },
+          {
+            key: 'apiKey',
+            label: 'API Key',
+            type: 'password',
+            default: '',
+            description: 'Radarr Settings → General → API Key'
+          }
+        ]
+      }
+    },
+    transportUrl: 'addon://internal.radarr/manifest.json',
+    enabled: false,
+    installedAt: '2025-01-03T00:00:00.000Z',
+    isBuiltIn: false,
+    healthStatus: 'healthy',
+    latencyMs: 26
+  },
+  {
+    manifest: {
+      id: 'org.prowlarr.indexers',
+      name: 'Prowlarr Indexer Manager',
+      version: '1.29.0',
+      description: 'Unified indexer manager that syncs torrent and Usenet trackers across Sonarr, Radarr, and Lidarr.',
+      author: 'Prowlarr Team',
+      icon: 'https://raw.githubusercontent.com/Prowlarr/Prowlarr/develop/Logo/256.png',
+      types: ['movie', 'series'],
+      resources: ['stream'],
+      behaviorHints: {
+        configurable: true,
+        configurationRequired: true
+      },
+      configurable: {
+        settings: [
+          {
+            key: 'baseUrl',
+            label: 'Prowlarr Base URL',
+            type: 'string',
+            default: 'http://localhost:9696',
+            description: 'Local or remote Prowlarr instance URL'
+          },
+          {
+            key: 'apiKey',
+            label: 'API Key',
+            type: 'password',
+            default: '',
+            description: 'Prowlarr Settings → General → API Key'
+          }
+        ]
+      }
+    },
+    transportUrl: 'addon://internal.prowlarr/manifest.json',
+    enabled: false,
+    installedAt: '2025-01-03T00:00:00.000Z',
+    isBuiltIn: false,
+    healthStatus: 'healthy',
+    latencyMs: 28
+  },
+  {
+    manifest: {
+      id: 'org.jackett.proxy',
+      name: 'Jackett Indexer Proxy',
+      version: '0.22.0',
+      description: 'API proxy that translates dozens of torrent trackers into a single Torznab/Potato feed for download clients.',
+      author: 'Jackett Community',
+      icon: 'https://raw.githubusercontent.com/Jackett/Jackett/master/src/Jackett.Server/Content/favicon.ico',
+      types: ['movie', 'series', 'anime'],
+      resources: ['stream'],
+      behaviorHints: {
+        p2p: true,
+        configurable: true,
+        configurationRequired: true
+      },
+      configurable: {
+        settings: [
+          {
+            key: 'baseUrl',
+            label: 'Jackett Base URL',
+            type: 'string',
+            default: 'http://localhost:9117',
+            description: 'Local or remote Jackett instance URL'
+          },
+          {
+            key: 'apiKey',
+            label: 'API Key',
+            type: 'password',
+            default: '',
+            description: 'Jackett dashboard API key'
+          }
+        ]
+      }
+    },
+    transportUrl: 'addon://internal.jackett/manifest.json',
+    enabled: false,
+    installedAt: '2025-01-03T00:00:00.000Z',
+    isBuiltIn: false,
+    healthStatus: 'healthy',
+    latencyMs: 30
+  },
+  {
+    manifest: {
+      id: 'org.bazarr.subtitles',
+      name: 'Bazarr Subtitle Manager',
+      version: '1.5.1',
+      description: 'Companion for Sonarr & Radarr that automatically downloads and manages subtitles for your media library.',
+      author: 'Bazarr Team',
+      icon: 'https://raw.githubusercontent.com/morpheus65535/bazarr/master/frontend/public/images/logo128.png',
+      types: ['movie', 'series'],
+      resources: ['subtitles'],
+      behaviorHints: {
+        configurable: true,
+        configurationRequired: true
+      },
+      configurable: {
+        settings: [
+          {
+            key: 'baseUrl',
+            label: 'Bazarr Base URL',
+            type: 'string',
+            default: 'http://localhost:6767',
+            description: 'Local or remote Bazarr instance URL'
+          },
+          {
+            key: 'apiKey',
+            label: 'API Key',
+            type: 'password',
+            default: '',
+            description: 'Bazarr Settings → General → API Key'
+          }
+        ]
+      }
+    },
+    transportUrl: 'addon://internal.bazarr/manifest.json',
+    enabled: false,
+    installedAt: '2025-01-03T00:00:00.000Z',
+    isBuiltIn: false,
+    healthStatus: 'healthy',
+    latencyMs: 22
   }
 ];
 
@@ -391,5 +608,70 @@ export const POPULAR_COMMUNITY_DIRECTORY: {
     icon: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?q=80&w=256&auto=format&fit=crop',
     types: ['channel', 'other'],
     resources: ['catalog', 'meta', 'stream']
+  },
+  {
+    id: 'org.sonarr.automation',
+    name: 'Sonarr TV Automation',
+    author: 'Sonarr Team',
+    category: 'catalogs',
+    description: 'Smart TV series library manager — monitors releases, grabs episodes, and organizes your show vault.',
+    manifestUrl: 'addon://internal.sonarr/manifest.json',
+    rating: 4.9,
+    installCount: '312K',
+    icon: 'https://raw.githubusercontent.com/Sonarr/Sonarr/develop/Logo/256.png',
+    types: ['series'],
+    resources: ['catalog', 'meta']
+  },
+  {
+    id: 'org.radarr.automation',
+    name: 'Radarr Movie Automation',
+    author: 'Radarr Team',
+    category: 'catalogs',
+    description: 'Automated movie collection manager — finds, downloads, and renames films to match your library.',
+    manifestUrl: 'addon://internal.radarr/manifest.json',
+    rating: 4.9,
+    installCount: '298K',
+    icon: 'https://raw.githubusercontent.com/Radarr/Radarr/develop/Logo/256.png',
+    types: ['movie'],
+    resources: ['catalog', 'meta']
+  },
+  {
+    id: 'org.prowlarr.indexers',
+    name: 'Prowlarr Indexer Manager',
+    author: 'Prowlarr Team',
+    category: 'streams',
+    description: 'Unified indexer manager that syncs torrent and Usenet trackers across Sonarr, Radarr, and Lidarr.',
+    manifestUrl: 'addon://internal.prowlarr/manifest.json',
+    rating: 4.8,
+    installCount: '241K',
+    icon: 'https://raw.githubusercontent.com/Prowlarr/Prowlarr/develop/Logo/256.png',
+    types: ['movie', 'series'],
+    resources: ['stream']
+  },
+  {
+    id: 'org.jackett.proxy',
+    name: 'Jackett Indexer Proxy',
+    author: 'Jackett Community',
+    category: 'streams',
+    description: 'API proxy that translates dozens of torrent trackers into a single Torznab/Potato feed.',
+    manifestUrl: 'addon://internal.jackett/manifest.json',
+    rating: 4.7,
+    installCount: '380K',
+    icon: 'https://raw.githubusercontent.com/Jackett/Jackett/master/src/Jackett.Server/Content/favicon.ico',
+    types: ['movie', 'series', 'anime'],
+    resources: ['stream']
+  },
+  {
+    id: 'org.bazarr.subtitles',
+    name: 'Bazarr Subtitle Manager',
+    author: 'Bazarr Team',
+    category: 'subtitles',
+    description: 'Companion for Sonarr & Radarr that automatically downloads and manages library subtitles.',
+    manifestUrl: 'addon://internal.bazarr/manifest.json',
+    rating: 4.8,
+    installCount: '195K',
+    icon: 'https://raw.githubusercontent.com/morpheus65535/bazarr/master/frontend/public/images/logo128.png',
+    types: ['movie', 'series'],
+    resources: ['subtitles']
   }
 ];

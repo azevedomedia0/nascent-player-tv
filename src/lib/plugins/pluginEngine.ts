@@ -135,9 +135,30 @@ export class PluginEngine {
     const url = this.normalizeManifestUrl(rawUrl);
 
     // Check if already installed
-    const existing = this.addons.find(a => a.transportUrl === url);
+    const existing = this.addons.find(a => a.transportUrl === url || a.manifest.id === url);
     if (existing) {
+      // Re-enable a known internal/default addon that was previously present but disabled
+      if (!existing.enabled) {
+        this.toggleAddon(existing.manifest.id, true);
+        return this.getAddon(existing.manifest.id)!;
+      }
       throw new Error(`Addon is already installed: "${existing.manifest.name}" (${existing.manifest.id})`);
+    }
+
+    // Built-in / internal manifests (addon://) — install from the default registry
+    if (url.startsWith('addon://')) {
+      const builtin = DEFAULT_COMMUNITY_ADDONS.find(
+        (a) => a.transportUrl === url || a.transportUrl === rawUrl
+      );
+      if (builtin) {
+        const already = this.addons.find((a) => a.manifest.id === builtin.manifest.id);
+        if (already) {
+          this.toggleAddon(already.manifest.id, true);
+          return this.getAddon(already.manifest.id)!;
+        }
+        return this.installFromManifest(builtin.manifest, builtin.transportUrl);
+      }
+      throw new Error(`Unknown internal addon: ${url}`);
     }
 
     const startTime = performance.now();

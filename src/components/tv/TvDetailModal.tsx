@@ -294,14 +294,8 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
         details: '4K HDR • 1.90:1 Expanded Aspect Ratio • Dolby Atmos Audio',
         badge: '',
         badgeColor: 'bg-blue-600/20 text-blue-300 border border-blue-500/30',
-        icon: (
-          <img
-            src="/assets/disney-plus-icon.png"
-            alt="Disney+"
-            className="w-8 h-8 object-cover"
-            draggable={false}
-          />
-        ),
+        icon: <Tv className="w-4 h-4 text-blue-400" />,
+        brandButtonSrc: '/assets/platforms/disney-plus.png',
         isPrimary: true
       });
     } else if (mid.includes('prime') || title.includes('boys') || title.includes('fallout') || title.includes('reacher') || title.includes('road house') || title.includes('invincible') || title.includes('rings of power')) {
@@ -653,7 +647,6 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
             <span className="flex items-center gap-1.5 font-bold">
               <span className="bg-[#f5c518] text-black text-[10px] px-1.5 py-0.5 rounded-sm font-black tracking-tight font-mono shadow-sm">IMDb</span>
               <span className="text-amber-400 font-bold">{ratingValue}</span>
-              {movie.imdbVotes && <span className="text-zinc-400 text-xs font-mono">({movie.imdbVotes} votes)</span>}
             </span>
             <span className="text-zinc-600 font-bold">·</span>
             {certification && certification !== String(movie.releaseYear) && (
@@ -706,22 +699,22 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
           </div>
 
           {/* Action Buttons — single row */}
-          <div className="flex flex-nowrap items-center gap-2 my-5 overflow-x-auto no-scrollbar">
+          <div className="flex flex-nowrap items-center gap-2 my-4 overflow-x-auto no-scrollbar">
             {/* Watch Now toggles inline stream options panel below */}
             <button
               type="button"
               onClick={() => setShowWatchNowPanel((prev) => !prev)}
               aria-expanded={showWatchNowPanel}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full font-extrabold text-xs sm:text-sm shadow-xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400 whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-extrabold text-sm tracking-wide shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_8px_28px_rgba(56,189,248,0.45)] cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/80 whitespace-nowrap shrink-0 ${
                 showWatchNowPanel
-                  ? 'bg-sky-400 text-black ring-2 ring-sky-300/60'
-                  : 'bg-white hover:bg-sky-400 text-black'
+                  ? 'bg-sky-400 text-black ring-2 ring-white/70'
+                  : 'bg-white text-black hover:bg-sky-300'
               }`}
             >
-              <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+              <Play className="w-4 h-4 fill-current" />
               <span>Watch Now</span>
               <ChevronDown
-                className={`w-3.5 h-3.5 transition-transform duration-200 ${showWatchNowPanel ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 ${showWatchNowPanel ? 'rotate-180' : ''}`}
               />
             </button>
 
@@ -730,7 +723,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                 onPlayTrailer(movie);
                 onClose();
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 transition-all transform hover:scale-105 whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 whitespace-nowrap shrink-0"
             >
               <Film className="w-3.5 h-3.5 text-sky-400" />
               <span>Trailer</span>
@@ -738,7 +731,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
 
             <button
               onClick={() => onToggleWatchlist(movie.id)}
-              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-full font-semibold text-xs sm:text-sm border transition-all transform hover:scale-105 whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full font-semibold text-xs sm:text-sm border whitespace-nowrap shrink-0 ${
                 isWatchlistActive
                   ? 'bg-sky-500/20 border-sky-400 text-sky-300'
                   : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
@@ -762,7 +755,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                 onOpenWatchParty(movie);
                 onClose();
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 transition-all transform hover:scale-105 whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 whitespace-nowrap shrink-0"
             >
               <Users className="w-3.5 h-3.5 text-indigo-400" />
               <span>Watch Party</span>
@@ -772,13 +765,10 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
           {/* Watch Now options panel — under action buttons */}
           {showWatchNowPanel && (
             <div className="mb-5 -mt-2 animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="flex items-baseline justify-between gap-3 mb-3.5">
+              <div className="flex items-baseline mb-3.5">
                 <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
                   Available to watch
                 </h3>
-                <span className="text-[11px] text-zinc-600">
-                  {watchNowOptions.length} {watchNowOptions.length === 1 ? 'source' : 'sources'}
-                </span>
               </div>
               <div className="flex flex-wrap items-center gap-3 sm:gap-3.5">
                 {watchNowOptions.map((opt) => (
@@ -802,12 +792,12 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                         <img
                           src={opt.brandButtonSrc}
                           alt=""
-                          className="relative h-11 w-auto max-w-[168px] object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:brightness-110 transition-[filter] duration-200"
+                          className="relative h-14 w-auto max-w-[200px] object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:brightness-110 transition-[filter] duration-200"
                           draggable={false}
                         />
                       </>
                     ) : (
-                      <span className="inline-flex items-center gap-2.5 h-11 px-4 rounded-full bg-zinc-950/80 border border-white/12 text-xs font-semibold text-white shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md group-hover:border-sky-400/40 group-hover:bg-zinc-900 transition-colors">
+                      <span className="inline-flex items-center gap-2.5 h-14 px-5 rounded-full bg-zinc-950/80 border border-white/12 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md group-hover:border-sky-400/40 group-hover:bg-zinc-900 transition-colors">
                         <span className="shrink-0 opacity-90">{opt.icon}</span>
                         <span className="truncate max-w-[10rem]">{opt.label}</span>
                         {opt.badge ? (
@@ -1003,12 +993,12 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                         <img
                           src={opt.brandButtonSrc}
                           alt=""
-                          className="relative h-11 w-auto max-w-[168px] object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:brightness-110 transition-[filter] duration-200"
+                          className="relative h-14 w-auto max-w-[200px] object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:brightness-110 transition-[filter] duration-200"
                           draggable={false}
                         />
                       </>
                     ) : (
-                      <span className="inline-flex items-center gap-2.5 h-11 px-4 rounded-full bg-zinc-950/80 border border-white/12 text-xs font-semibold text-white shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md group-hover:border-sky-400/40 group-hover:bg-zinc-900 transition-colors">
+                      <span className="inline-flex items-center gap-2.5 h-14 px-5 rounded-full bg-zinc-950/80 border border-white/12 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md group-hover:border-sky-400/40 group-hover:bg-zinc-900 transition-colors">
                         <span className="shrink-0 opacity-90">{opt.icon}</span>
                         <span className="truncate max-w-[10rem]">{opt.label}</span>
                       </span>
