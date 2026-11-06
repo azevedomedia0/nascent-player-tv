@@ -19,7 +19,7 @@ import {
   Radio,
   AlertCircle
 } from 'lucide-react';
-import { FeaturedMovie } from './TvHeroBillboard';
+import { FeaturedMovie } from '../../lib/types';
 import { AppLogo } from '../AppLogo';
 import { LOCAL_MEDIA_FILES, SHARED_PEER_LIBRARIES } from '../../lib/tvMediaData';
 

@@ -18,7 +18,7 @@ import {
   Puzzle,
   Lock
 } from 'lucide-react';
-import { FeaturedMovie } from './TvHeroBillboard';
+import { FeaturedMovie } from '../../lib/types';
 import { TRENDING_PLATFORMS } from '../../App';
 import { globalPluginEngine } from '../../lib/plugins/pluginEngine';
 

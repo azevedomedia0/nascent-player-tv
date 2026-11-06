@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { ChevronLeft, ChevronRight, Play, Star, Clock } from 'lucide-react';
-import { FeaturedMovie } from './TvHeroBillboard';
+import { FeaturedMovie } from '../../lib/types';
 
 interface TvContentRowProps {
   title: string;

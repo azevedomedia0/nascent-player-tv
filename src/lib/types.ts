@@ -1,3 +1,8 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 export interface SubtitleTrack {
   id: string;
   label: string;
@@ -69,4 +74,30 @@ export interface PlayerPlugin {
   enabled: boolean;
   type: 'metadata' | 'video-filter' | 'subtitle-translator' | 'visuals' | 'stremio';
   manifestUrl?: string; // Stremio manifest URL if type === 'stremio'
+}
+
+export interface FeaturedMovie {
+  id: string;
+  title: string;
+  releaseYear: string;
+  posterUrl: string;
+  bannerUrl?: string;
+  genres: string[];
+  duration?: number;
+  rating?: number | string;
+  certification?: string;
+  director?: string;
+  summary?: string;
+  plot?: string;
+  cast?: string[] | { name: string; role?: string }[];
+  inWatchlist?: boolean;
+  imdbId?: string;
+  imdbRating?: string | number;
+  imdbVotes?: string;
+  imdbUrl?: string;
+  awards?: string;
+  statusBadge?: string;
+  progress?: number;
+  remainingTime?: string;
+  streamUrl?: string;
 }

@@ -1,31 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Play, Plus, Check, Film, Star, Info, ChevronLeft, ChevronRight } from 'lucide-react';
-
-export interface FeaturedMovie {
-  id: string;
-  title: string;
-  releaseYear: string;
-  posterUrl: string;
-  bannerUrl?: string;
-  genres: string[];
-  duration?: number;
-  rating?: number | string;
-  certification?: string;
-  director?: string;
-  summary?: string;
-  plot?: string;
-  cast?: string[] | { name: string; role?: string }[];
-  inWatchlist?: boolean;
-  imdbId?: string;
-  imdbRating?: string | number;
-  imdbVotes?: string;
-  imdbUrl?: string;
-  awards?: string;
-  statusBadge?: string;
-  progress?: number;
-  remainingTime?: string;
-  streamUrl?: string;
-}
+import { FeaturedMovie } from '../../lib/types';
 
 export interface ContinueWatchingMediaItem extends FeaturedMovie {
   progress: number;

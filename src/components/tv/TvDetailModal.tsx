@@ -19,7 +19,7 @@ import {
   ListPlus,
   ChevronDown
 } from 'lucide-react';
-import { FeaturedMovie } from './TvHeroBillboard';
+import { FeaturedMovie } from '../../lib/types';
 import { UserCustomList } from './TvSearchModal';
 import { fetchImdbMetadata, getActorHeadshot, enrichCastArray, CastMember } from '../../lib/imdbService';
 import { getAvailableSeasons, getEpisodesForSeason, isTvSeries } from '../../lib/tvEpisodeData';

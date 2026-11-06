@@ -1,4 +1,4 @@
-import { FeaturedMovie } from '../components/tv/TvHeroBillboard';
+import { FeaturedMovie } from './types';
 
 // Curated supplementary movies and shows to expand each platform list from 20 to 50 items
 export const EXPAND_TO_50 = (
