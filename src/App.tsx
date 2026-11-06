@@ -882,7 +882,6 @@ export default function App() {
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
             onOpenConnectModal={() => setIsConnectModalOpen(true)}
-            onOpenPlugins={() => setIsPluginModalOpen(true)}
             localFilesCount={LOCAL_MEDIA_FILES.length}
             onAddFolderSource={(folder) => {
               setScanFeedback(`Imported local system folder "${folder.name}" (${folder.path}) as active media source.`);

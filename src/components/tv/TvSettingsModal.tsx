@@ -401,25 +401,10 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            {/* TV Remote Button inside Settings */}
-            <button
-              onClick={() => {
-                onToggleRemote?.();
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-semibold transition-all focus:ring-2 focus:ring-sky-400 focus:outline-none ${
-                isRemoteOpen
-                  ? 'bg-sky-500 text-black border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] font-bold'
-                  : 'bg-white/10 hover:bg-white/20 text-zinc-200 border-white/15'
-              }`}
-              title="Launch Android TV Virtual Remote"
-            >
-              <Gamepad2 className="w-4 h-4" />
-              <span>TV Remote {isRemoteOpen ? '(Active)' : ''}</span>
-            </button>
-
             <button
               onClick={onClose}
               className="p-2.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+              aria-label="Close settings"
             >
               <X className="w-5 h-5" />
             </button>
@@ -432,7 +417,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
           <div className="w-64 border-r border-white/10 p-4 flex flex-col gap-1.5 bg-black/40 overflow-y-auto no-scrollbar">
             {[
               { id: 'profile', label: 'Profile & Account', icon: User, badge: currentProfile.initials },
-              { id: 'plugins', label: 'Plugins & Addons', icon: Puzzle, count: pluginsList.filter(p => p.isInstalled && p.enabled).length },
               { id: 'remote', label: 'TV Remote & D-Pad', icon: Gamepad2 },
               { id: 'audio-video', label: 'Display & Sound', icon: Sliders },
               { id: 'playback', label: 'Playback & Video', icon: Film },
@@ -440,6 +424,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               { id: 'streaming', label: 'Nascent Engine', icon: Zap },
               { id: 'storage', label: 'Storage & Drives', icon: HardDrive },
               { id: 'network', label: 'Server & LAN', icon: Server },
+              { id: 'plugins', label: 'Plugins & Addons', icon: Puzzle, count: pluginsList.filter(p => p.isInstalled && p.enabled).length },
             ].map((cat) => {
               const Icon = cat.icon;
               const isActive = activeCategory === cat.id;

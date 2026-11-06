@@ -20,14 +20,10 @@ import {
   Usb,
   Network,
   Server,
-  X,
-  Puzzle,
-  Sparkles,
-  Lock
+  X
 } from 'lucide-react';
 import { TvTab } from './TvTopNav';
 import { AppLogo } from '../AppLogo';
-import { addonPaywall } from '../../lib/plugins/addonPaywall';
 
 export interface LocalFolderSource {
   id: string;
@@ -59,7 +55,6 @@ interface TvSidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onOpenConnectModal: () => void;
-  onOpenPlugins?: () => void;
   localFilesCount?: number;
   onAddFolderSource?: (folder: LocalFolderSource) => void;
 }
@@ -73,7 +68,6 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
   isCollapsed,
   onToggleCollapse,
   onOpenConnectModal,
-  onOpenPlugins,
   localFilesCount: _localFilesCount = 3,
   onAddFolderSource,
 }) => {
@@ -276,8 +270,21 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
         isCollapsed ? 'items-center justify-center py-6 px-0 gap-4 overflow-hidden' : 'p-4 gap-6 overflow-y-auto no-scrollbar'
       }`}>
         {/* Brand + collapse control */}
-        <div className={`flex items-center gap-2 ${isCollapsed ? 'justify-center w-full px-0' : 'justify-between px-1'}`}>
-          {!isCollapsed && (
+        <div
+          className={`flex ${
+            isCollapsed
+              ? 'flex-col items-center justify-center gap-3 w-full px-0'
+              : 'items-center justify-between gap-2 px-1'
+          }`}
+        >
+          {isCollapsed ? (
+            <img
+              src="/assets/nascent-mark.png"
+              alt="Nascent Player"
+              className="w-11 h-auto object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.45)] select-none pointer-events-none"
+              draggable={false}
+            />
+          ) : (
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0">
                 <AppLogo className="w-full h-full" showBackground={false} />
@@ -614,41 +621,6 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           </div>
         </div>
 
-        {/* Community Addons & Plugins Entrypoint */}
-        {onOpenPlugins && (
-          <div className={`mt-auto pt-2 border-t border-white/10 ${isCollapsed ? 'w-full flex justify-center' : ''}`}>
-            <button
-              onClick={onOpenPlugins}
-              className={`group flex items-center ${
-                isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'w-full justify-between px-3.5 py-2.5'
-              } rounded-2xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 transition-all text-left focus:outline-none cursor-pointer`}
-              title="Community Plugins & Addons (Stremio Protocol)"
-            >
-              <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                <div className="flex items-center justify-center w-9 h-9 rounded-full bg-indigo-500/20 text-indigo-400 group-hover:scale-105 transition-transform shrink-0">
-                  <Puzzle className="w-5 h-5" />
-                </div>
-                {!isCollapsed && (
-                  <div className="flex flex-col truncate min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-white text-xs truncate">Community Addons</span>
-                      {addonPaywall.isUnlocked() ? (
-                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-pink-500/25 text-pink-300 border border-pink-500/40 shrink-0 flex items-center gap-0.5">
-                          <Sparkles className="w-2.5 h-2.5 text-amber-300" /> VIP
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0 flex items-center gap-0.5">
-                          <Lock className="w-2.5 h-2.5" /> Pass
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-indigo-300/70 font-normal truncate">Stremio Protocol v3</span>
-                  </div>
-                )}
-              </div>
-            </button>
-          </div>
-        )}
       </div>
     </aside>
 
