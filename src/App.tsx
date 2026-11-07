@@ -27,8 +27,8 @@ import { StreamingEngineHUD } from './components/StreamingEngineHUD';
 import { globalStreamingEngine } from './lib/streamingEngine';
 import { TvSidebar } from './components/tv/TvSidebar';
 import { TvLibrariesView } from './components/tv/TvLibrariesView';
-import { EXPAND_TO_50, SUPPLEMENTAL_MOVIES, SUPPLEMENTAL_SHOWS } from './lib/top50Expansion';
 import { isTvSeries } from './lib/tvEpisodeData';
+import { apiFetch } from './lib/apiAuth';
 import { 
   DISNEY_PLUS_TOP_20,
   DISNEY_PLUS_TOP_20_SHOWS,
@@ -135,34 +135,27 @@ export const TRENDING_PLATFORMS: Record<string, { platforms: string[]; trendReas
   "tears-sample": { platforms: ["Google TV Core"], trendReason: "Sci-Fi Atmos Master" }
 };
 
-// Expanded TOP 50 Lists (50 items each)
-export const NETFLIX_TOP_50: FeaturedMovie[] = EXPAND_TO_50(NETFLIX_TOP_20, SUPPLEMENTAL_MOVIES, 'netflix-movie');
-export const HULU_TOP_50: FeaturedMovie[] = EXPAND_TO_50(HULU_TOP_20, SUPPLEMENTAL_MOVIES, 'hulu-movie');
-export const HBO_MAX_TOP_50: FeaturedMovie[] = EXPAND_TO_50(HBO_MAX_TOP_20, SUPPLEMENTAL_MOVIES, 'hbo-movie');
-export const DISNEY_PLUS_TOP_50: FeaturedMovie[] = EXPAND_TO_50(DISNEY_PLUS_TOP_20, SUPPLEMENTAL_MOVIES, 'disney-movie');
-export const AMAZON_PRIME_TOP_50: FeaturedMovie[] = EXPAND_TO_50(AMAZON_PRIME_TOP_20, SUPPLEMENTAL_MOVIES, 'amazon-movie');
-export const APPLE_TV_TOP_50: FeaturedMovie[] = EXPAND_TO_50(APPLE_TV_TOP_20, SUPPLEMENTAL_MOVIES, 'apple-movie');
-
-export const NETFLIX_TOP_50_SHOWS: FeaturedMovie[] = EXPAND_TO_50(NETFLIX_TOP_20_SHOWS, SUPPLEMENTAL_SHOWS, 'netflix-tv');
-export const HULU_TOP_50_SHOWS: FeaturedMovie[] = EXPAND_TO_50(HULU_TOP_20_SHOWS, SUPPLEMENTAL_SHOWS, 'hulu-tv');
-export const HBO_MAX_TOP_50_SHOWS: FeaturedMovie[] = EXPAND_TO_50(HBO_MAX_TOP_20_SHOWS, SUPPLEMENTAL_SHOWS, 'hbo-tv');
-export const DISNEY_PLUS_TOP_50_SHOWS: FeaturedMovie[] = EXPAND_TO_50(DISNEY_PLUS_TOP_20_SHOWS, SUPPLEMENTAL_SHOWS, 'disney-tv');
-export const AMAZON_PRIME_TOP_50_SHOWS: FeaturedMovie[] = EXPAND_TO_50(AMAZON_PRIME_TOP_20_SHOWS, SUPPLEMENTAL_SHOWS, 'amazon-tv');
-export const APPLE_TV_TOP_50_SHOWS: FeaturedMovie[] = EXPAND_TO_50(APPLE_TV_TOP_20_SHOWS, SUPPLEMENTAL_SHOWS, 'apple-tv');
+// Honest top-20 catalog rows — no modulo padding to fake a "Top 50".
+export const NETFLIX_TOP_20_MOVIES = NETFLIX_TOP_20;
+export const HULU_TOP_20_MOVIES = HULU_TOP_20;
+export const HBO_MAX_TOP_20_MOVIES = HBO_MAX_TOP_20;
+export const DISNEY_PLUS_TOP_20_MOVIES = DISNEY_PLUS_TOP_20;
+export const AMAZON_PRIME_TOP_20_MOVIES = AMAZON_PRIME_TOP_20;
+export const APPLE_TV_TOP_20_MOVIES = APPLE_TV_TOP_20;
 
 export const GLOBAL_MOVIE_POSTERS: FeaturedMovie[] = [
-  ...HBO_MAX_TOP_50,
-  ...NETFLIX_TOP_50.filter(n => !HBO_MAX_TOP_50.some(h => h.id === n.id)),
-  ...HULU_TOP_50.filter(u => !HBO_MAX_TOP_50.some(h => h.id === u.id) && !NETFLIX_TOP_50.some(n => n.id === u.id)),
-  ...DISNEY_PLUS_TOP_50.filter(d => !HBO_MAX_TOP_50.some(h => h.id === d.id) && !NETFLIX_TOP_50.some(n => n.id === d.id)),
-  ...AMAZON_PRIME_TOP_50.filter(a => !HBO_MAX_TOP_50.some(h => h.id === a.id) && !NETFLIX_TOP_50.some(n => n.id === a.id)),
-  ...APPLE_TV_TOP_50.filter(ap => !HBO_MAX_TOP_50.some(h => h.id === ap.id) && !NETFLIX_TOP_50.some(n => n.id === ap.id)),
-  ...HBO_MAX_TOP_50_SHOWS.filter(s => !HBO_MAX_TOP_50.some(h => h.id === s.id)),
-  ...NETFLIX_TOP_50_SHOWS.filter(s => !HBO_MAX_TOP_50.some(h => h.id === s.id) && !NETFLIX_TOP_50.some(n => n.id === s.id)),
-  ...HULU_TOP_50_SHOWS.filter(s => !HBO_MAX_TOP_50.some(h => h.id === s.id) && !NETFLIX_TOP_50.some(n => n.id === s.id)),
-  ...DISNEY_PLUS_TOP_50_SHOWS.filter(s => !HBO_MAX_TOP_50.some(h => h.id === s.id)),
-  ...AMAZON_PRIME_TOP_50_SHOWS.filter(s => !HBO_MAX_TOP_50.some(h => h.id === s.id)),
-  ...APPLE_TV_TOP_50_SHOWS.filter(s => !HBO_MAX_TOP_50.some(h => h.id === s.id)),
+  ...HBO_MAX_TOP_20,
+  ...NETFLIX_TOP_20.filter(n => !HBO_MAX_TOP_20.some(h => h.id === n.id)),
+  ...HULU_TOP_20.filter(u => !HBO_MAX_TOP_20.some(h => h.id === u.id) && !NETFLIX_TOP_20.some(n => n.id === u.id)),
+  ...DISNEY_PLUS_TOP_20.filter(d => !HBO_MAX_TOP_20.some(h => h.id === d.id) && !NETFLIX_TOP_20.some(n => n.id === d.id)),
+  ...AMAZON_PRIME_TOP_20.filter(a => !HBO_MAX_TOP_20.some(h => h.id === a.id) && !NETFLIX_TOP_20.some(n => n.id === a.id)),
+  ...APPLE_TV_TOP_20.filter(ap => !HBO_MAX_TOP_20.some(h => h.id === ap.id) && !NETFLIX_TOP_20.some(n => n.id === ap.id)),
+  ...HBO_MAX_TOP_20_SHOWS.filter(s => !HBO_MAX_TOP_20.some(h => h.id === s.id)),
+  ...NETFLIX_TOP_20_SHOWS.filter(s => !HBO_MAX_TOP_20.some(h => h.id === s.id) && !NETFLIX_TOP_20.some(n => n.id === s.id)),
+  ...HULU_TOP_20_SHOWS.filter(s => !HBO_MAX_TOP_20.some(h => h.id === s.id) && !NETFLIX_TOP_20.some(n => n.id === s.id)),
+  ...DISNEY_PLUS_TOP_20_SHOWS.filter(s => !HBO_MAX_TOP_20.some(h => h.id === s.id)),
+  ...AMAZON_PRIME_TOP_20_SHOWS.filter(s => !HBO_MAX_TOP_20.some(h => h.id === s.id)),
+  ...APPLE_TV_TOP_20_SHOWS.filter(s => !HBO_MAX_TOP_20.some(h => h.id === s.id)),
 ];
 
 export const getRichMovieDetail = (item: any) => {
@@ -178,42 +171,21 @@ export const getRichMovieDetail = (item: any) => {
   };
 };
 
-// Helper to compute daily updated Top 50 lists deterministically by calendar date
-export function getDailyUpdatedTop50(items: FeaturedMovie[], seedOffset: number = 0): FeaturedMovie[] {
+/** Rotate an honest top-20 list deterministically by calendar date (no padding). */
+export function getDailyUpdatedTop20(items: FeaturedMovie[], seedOffset: number = 0): FeaturedMovie[] {
+  const list = items.slice(0, 20);
+  if (list.length === 0) return [];
   const now = new Date();
   const startOfYear = new Date(now.getFullYear(), 0, 1);
   const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
-  
-  // The first 6 items are the headline items, rotating daily
-  const headline = items.slice(0, 6);
-  const headlineShift = (dayOfYear + seedOffset) % Math.max(1, headline.length);
-  const rotatedHeadline = [
-    ...headline.slice(headlineShift),
-    ...headline.slice(0, headlineShift)
-  ];
-
-  // The remaining 44 items rotate deterministically
-  const tail = items.slice(6);
-  const tailShift = (dayOfYear * 2 + seedOffset) % Math.max(1, tail.length);
-  const rotatedTail = [
-    ...tail.slice(tailShift),
-    ...tail.slice(0, tailShift)
-  ];
-
-  return [...rotatedHeadline, ...rotatedTail].slice(0, 50);
+  const shift = (dayOfYear + seedOffset) % list.length;
+  return [...list.slice(shift), ...list.slice(0, shift)];
 }
-// A show is anything isTvSeries() recognises (a TV- certification,
-// 'season'/'series' in the title, or a known show keyword in id/title).
-// Verified 2026-11-06: over 1,320 classifications across every catalog
-// the app filters (GLOBAL_MOVIE_POSTERS, all TOP 50s and TOP 50 SHOWS)
-// !isTvSeries() agrees exactly with the old KNOWN_TV_SHOW_IDS +
-// id-suffix + certification checks, so the duplicated Set is deleted.
+
 export const isMovieItem = (item: FeaturedMovie): boolean => {
   if (!item) return false;
   return !isTvSeries(item);
 };
-
-export const getDailyUpdatedTop20 = getDailyUpdatedTop50;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TvTab>('movies');
@@ -281,7 +253,7 @@ export default function App() {
     });
   };
   
-  // Daily Top 50 update tracking
+  // Daily top-20 catalog rotation
   const todayDateString = useMemo(() => {
     return new Date().toLocaleDateString('en-US', {
       month: 'short',
@@ -289,6 +261,8 @@ export default function App() {
       year: 'numeric'
     });
   }, []);
+
+  const [localMediaFiles, setLocalMediaFiles] = useState<LocalMediaFileItem[]>(LOCAL_MEDIA_FILES);
 
   // Pure Movies Only list for the Movies tab hero & navigation
   const pureMoviesList = useMemo(() => {
@@ -298,30 +272,79 @@ export default function App() {
   // Pure TV Shows list for the TV Shows tab
   const pureShowsList = useMemo(() => {
     return [
-      ...NETFLIX_TOP_50_SHOWS,
-      ...HULU_TOP_50_SHOWS,
-      ...HBO_MAX_TOP_50_SHOWS,
-      ...DISNEY_PLUS_TOP_50_SHOWS,
-      ...AMAZON_PRIME_TOP_50_SHOWS,
-      ...APPLE_TV_TOP_50_SHOWS,
+      ...NETFLIX_TOP_20_SHOWS,
+      ...HULU_TOP_20_SHOWS,
+      ...HBO_MAX_TOP_20_SHOWS,
+      ...DISNEY_PLUS_TOP_20_SHOWS,
+      ...AMAZON_PRIME_TOP_20_SHOWS,
+      ...APPLE_TV_TOP_20_SHOWS,
     ];
   }, []);
 
-  // Top 50 Movies per platform (strictly filtered to movies only)
-  const dailyNetflixMovies = useMemo(() => getDailyUpdatedTop50(NETFLIX_TOP_50, 0).filter(isMovieItem), []);
-  const dailyHuluMovies = useMemo(() => getDailyUpdatedTop50(HULU_TOP_50, 0).filter(isMovieItem), []);
-  const dailyHboMovies = useMemo(() => getDailyUpdatedTop50(HBO_MAX_TOP_50, 0).filter(isMovieItem), []);
-  const dailyDisneyMovies = useMemo(() => getDailyUpdatedTop50(DISNEY_PLUS_TOP_50, 1).filter(isMovieItem), []);
-  const dailyAmazonMovies = useMemo(() => getDailyUpdatedTop50(AMAZON_PRIME_TOP_50, 2).filter(isMovieItem), []);
-  const dailyAppleMovies = useMemo(() => getDailyUpdatedTop50(APPLE_TV_TOP_50, 3).filter(isMovieItem), []);
+  // Top 20 Movies per platform (strictly filtered to movies only)
+  const dailyNetflixMovies = useMemo(() => getDailyUpdatedTop20(NETFLIX_TOP_20, 0).filter(isMovieItem), []);
+  const dailyHuluMovies = useMemo(() => getDailyUpdatedTop20(HULU_TOP_20, 0).filter(isMovieItem), []);
+  const dailyHboMovies = useMemo(() => getDailyUpdatedTop20(HBO_MAX_TOP_20, 0).filter(isMovieItem), []);
+  const dailyDisneyMovies = useMemo(() => getDailyUpdatedTop20(DISNEY_PLUS_TOP_20, 1).filter(isMovieItem), []);
+  const dailyAmazonMovies = useMemo(() => getDailyUpdatedTop20(AMAZON_PRIME_TOP_20, 2).filter(isMovieItem), []);
+  const dailyAppleMovies = useMemo(() => getDailyUpdatedTop20(APPLE_TV_TOP_20, 3).filter(isMovieItem), []);
 
-  // Top 50 TV Shows per platform
-  const dailyNetflixShows = useMemo(() => getDailyUpdatedTop50(NETFLIX_TOP_50_SHOWS, 0), []);
-  const dailyHuluShows = useMemo(() => getDailyUpdatedTop50(HULU_TOP_50_SHOWS, 0), []);
-  const dailyHboShows = useMemo(() => getDailyUpdatedTop50(HBO_MAX_TOP_50_SHOWS, 0), []);
-  const dailyDisneyShows = useMemo(() => getDailyUpdatedTop50(DISNEY_PLUS_TOP_50_SHOWS, 1), []);
-  const dailyAmazonShows = useMemo(() => getDailyUpdatedTop50(AMAZON_PRIME_TOP_50_SHOWS, 2), []);
-  const dailyAppleShows = useMemo(() => getDailyUpdatedTop50(APPLE_TV_TOP_50_SHOWS, 3), []);
+  // Top 20 TV Shows per platform
+  const dailyNetflixShows = useMemo(() => getDailyUpdatedTop20(NETFLIX_TOP_20_SHOWS, 0), []);
+  const dailyHuluShows = useMemo(() => getDailyUpdatedTop20(HULU_TOP_20_SHOWS, 0), []);
+  const dailyHboShows = useMemo(() => getDailyUpdatedTop20(HBO_MAX_TOP_20_SHOWS, 0), []);
+  const dailyDisneyShows = useMemo(() => getDailyUpdatedTop20(DISNEY_PLUS_TOP_20_SHOWS, 1), []);
+  const dailyAmazonShows = useMemo(() => getDailyUpdatedTop20(AMAZON_PRIME_TOP_20_SHOWS, 2), []);
+  const dailyAppleShows = useMemo(() => getDailyUpdatedTop20(APPLE_TV_TOP_20_SHOWS, 3), []);
+
+  const handleLibraryRescan = async () => {
+    const res = await apiFetch('/api/media/rescan', { method: 'POST' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body as { error?: string }).error || `Rescan failed (${res.status})`);
+    }
+    const data = await res.json();
+    if (Array.isArray(data.media)) {
+      const mapped: LocalMediaFileItem[] = data.media.map((m: Record<string, unknown>) => {
+        const filename = String(m.filename || '');
+        const streamUrl = String(
+          m.url || (filename ? `/api/stream/${encodeURIComponent(filename)}` : '')
+        );
+        return {
+          id: String(m.id),
+          filename: filename || String(m.id),
+          title: String(m.title || filename || 'Untitled'),
+          path: filename ? `media/${filename}` : streamUrl,
+          resolution: String(m.resolution || '—'),
+          fps: String(m.fps || '—'),
+          codec: String(m.codec || '—'),
+          container: filename ? filename.split('.').pop()?.toUpperCase() || '—' : '—',
+          audioTrack: String(m.audioTrack || '—'),
+          fileSize: String(m.fileSize || '—'),
+          bitrate: String(m.bitrate || '—'),
+          duration:
+            typeof m.duration === 'number'
+              ? `${Math.floor(m.duration / 60)}m`
+              : String(m.duration || '—'),
+          releaseYear: String(m.releaseYear || ''),
+          posterUrl: String(m.posterUrl || ''),
+          bannerUrl: String(m.bannerUrl || ''),
+          genres: Array.isArray(m.genres) ? (m.genres as string[]) : [],
+          rating: typeof m.rating === 'number' ? m.rating : 0,
+          certification: String(m.certification || ''),
+          director: String(m.director || ''),
+          summary: String(m.summary || ''),
+          streamUrl,
+        };
+      });
+      if (mapped.length > 0) setLocalMediaFiles(mapped);
+    }
+    return {
+      scanned: Number(data.scanned) || 0,
+      added: Number(data.added) || 0,
+      total: Number(data.total) || 0,
+    };
+  };
   
   // UI Dialog states
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -746,9 +769,9 @@ export default function App() {
                 selectedItemId={currentFeatured.id}
               />
 
-              {/* Row 1: Top 50 Movies on Netflix */}
+              {/* Row 1: Top 20 Movies on Netflix */}
               <TvContentRow
-                title="Top 50 Movies on Netflix"
+                title="Top 20 Movies on Netflix"
                 items={dailyNetflixMovies}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedMovie(m)}
@@ -758,9 +781,9 @@ export default function App() {
                 selectedItemId={currentFeatured.id}
               />
 
-              {/* Row 2: Top 50 Movies on Hulu */}
+              {/* Row 2: Top 20 Movies on Hulu */}
               <TvContentRow
-                title="Top 50 Movies on Hulu"
+                title="Top 20 Movies on Hulu"
                 items={dailyHuluMovies}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedMovie(m)}
@@ -770,9 +793,9 @@ export default function App() {
                 selectedItemId={currentFeatured.id}
               />
 
-              {/* Row 3: Top 50 Movies on HBO Max */}
+              {/* Row 3: Top 20 Movies on HBO Max */}
               <TvContentRow
-                title="Top 50 Movies on HBO Max"
+                title="Top 20 Movies on HBO Max"
                 items={dailyHboMovies}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedMovie(m)}
@@ -782,9 +805,9 @@ export default function App() {
                 selectedItemId={currentFeatured.id}
               />
 
-              {/* Row 4: Top 50 Movies on Disney+ */}
+              {/* Row 4: Top 20 Movies on Disney+ */}
               <TvContentRow
-                title="Top 50 Movies on Disney+"
+                title="Top 20 Movies on Disney+"
                 items={dailyDisneyMovies}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedMovie(m)}
@@ -794,9 +817,9 @@ export default function App() {
                 selectedItemId={currentFeatured.id}
               />
 
-              {/* Row 5: Top 50 Movies on Amazon Prime */}
+              {/* Row 5: Top 20 Movies on Amazon Prime */}
               <TvContentRow
-                title="Top 50 Movies on Amazon Prime"
+                title="Top 20 Movies on Amazon Prime"
                 items={dailyAmazonMovies}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedMovie(m)}
@@ -806,9 +829,9 @@ export default function App() {
                 selectedItemId={currentFeatured.id}
               />
 
-              {/* Row 6: Top 50 Movies on Apple TV+ */}
+              {/* Row 6: Top 20 Movies on Apple TV+ */}
               <TvContentRow
-                title="Top 50 Movies on Apple TV+"
+                title="Top 20 Movies on Apple TV+"
                 items={dailyAppleMovies}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedMovie(m)}
@@ -851,9 +874,9 @@ export default function App() {
                 selectedItemId={currentFeaturedShow.id}
               />
 
-              {/* Row 1: Top 50 TV Shows on Netflix */}
+              {/* Row 1: Top 20 TV Shows on Netflix */}
               <TvContentRow
-                title="Top 50 TV Shows on Netflix"
+                title="Top 20 TV Shows on Netflix"
                 items={dailyNetflixShows}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
@@ -863,9 +886,9 @@ export default function App() {
                 selectedItemId={currentFeaturedShow.id}
               />
 
-              {/* Row 2: Top 50 TV Shows on Hulu */}
+              {/* Row 2: Top 20 TV Shows on Hulu */}
               <TvContentRow
-                title="Top 50 TV Shows on Hulu"
+                title="Top 20 TV Shows on Hulu"
                 items={dailyHuluShows}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
@@ -875,9 +898,9 @@ export default function App() {
                 selectedItemId={currentFeaturedShow.id}
               />
 
-              {/* Row 3: Top 50 TV Shows on HBO Max */}
+              {/* Row 3: Top 20 TV Shows on HBO Max */}
               <TvContentRow
-                title="Top 50 TV Shows on HBO Max"
+                title="Top 20 TV Shows on HBO Max"
                 items={dailyHboShows}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
@@ -887,9 +910,9 @@ export default function App() {
                 selectedItemId={currentFeaturedShow.id}
               />
 
-              {/* Row 4: Top 50 TV Shows on Disney+ */}
+              {/* Row 4: Top 20 TV Shows on Disney+ */}
               <TvContentRow
-                title="Top 50 TV Shows on Disney+"
+                title="Top 20 TV Shows on Disney+"
                 items={dailyDisneyShows}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
@@ -899,9 +922,9 @@ export default function App() {
                 selectedItemId={currentFeaturedShow.id}
               />
 
-              {/* Row 5: Top 50 TV Shows on Amazon Prime */}
+              {/* Row 5: Top 20 TV Shows on Amazon Prime */}
               <TvContentRow
-                title="Top 50 TV Shows on Amazon Prime"
+                title="Top 20 TV Shows on Amazon Prime"
                 items={dailyAmazonShows}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
@@ -911,9 +934,9 @@ export default function App() {
                 selectedItemId={currentFeaturedShow.id}
               />
 
-              {/* Row 6: Top 50 TV Shows on Apple TV+ */}
+              {/* Row 6: Top 20 TV Shows on Apple TV+ */}
               <TvContentRow
-                title="Top 50 TV Shows on Apple TV+"
+                title="Top 20 TV Shows on Apple TV+"
                 items={dailyAppleShows}
                 onSelectItem={(m) => setInspectedMovie(m)}
                 onFocusItem={(m) => setSelectedShow(m)}
@@ -929,12 +952,13 @@ export default function App() {
         {/* TAB 3 & 4: LIBRARIES & MEDIA VAULT */}
         {(activeTab === 'local-media' || activeTab === 'library' || activeTab === 'shared-libraries') && (
           <TvLibrariesView
-            localMediaFiles={LOCAL_MEDIA_FILES}
+            localMediaFiles={localMediaFiles}
             peerLibraries={SHARED_PEER_LIBRARIES}
             onPlayMovie={handlePlayMovie}
             onInspectMovie={(movie) => setInspectedMovie(movie)}
             onStreamSelectorMovie={(movie) => setStreamSelectorMovie(movie)}
             onOpenWatchParty={(movie) => setWatchPartyMovie(movie)}
+            onRescan={handleLibraryRescan}
             selectedPeerId={selectedPeerId}
             onSelectPeer={(peerId) => {
               setSelectedPeerId(peerId);

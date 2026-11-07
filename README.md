@@ -118,7 +118,6 @@ manifest format and the local plugin registry, is documented in
 │   │   ├── imdbService.ts
 │   │   ├── tvMediaData.ts  # Hardcoded catalog data
 │   │   ├── tvEpisodeData.ts
-│   │   ├── top50Expansion.ts
 │   │   └── plugins/        # Stremio addon engine + default plugins
 │   └── types.ts
 ├── tests/

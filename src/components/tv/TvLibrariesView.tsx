@@ -68,6 +68,8 @@ interface TvLibrariesViewProps {
   onInspectMovie: (movie: FeaturedMovie) => void;
   onStreamSelectorMovie: (movie: FeaturedMovie) => void;
   onOpenWatchParty?: (movie: FeaturedMovie) => void;
+  /** Real library rescan — should hit the server and update localMediaFiles. */
+  onRescan?: () => Promise<{ scanned: number; added: number; total: number } | void>;
   selectedPeerId: string | null;
   onSelectPeer: (peerId: string | null) => void;
 }
@@ -79,6 +81,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
   onInspectMovie,
   onStreamSelectorMovie,
   onOpenWatchParty,
+  onRescan,
   selectedPeerId,
   onSelectPeer,
 }) => {
@@ -191,17 +194,29 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
     };
   });
 
-  // Rescan simulation with realistic timings
-  const handleRescan = () => {
+  // Real media-directory rescan via server (or parent-provided handler).
+  const handleRescan = async () => {
     setIsScanning(true);
-    setScanStatus('Scanning PCIe NVMe, attached USB-C storage & LAN mountpoints...');
-    setTimeout(() => {
+    setScanStatus('Scanning media directory…');
+    try {
+      if (onRescan) {
+        const result = await onRescan();
+        if (result) {
+          setScanStatus(
+            `Scan complete: ${result.scanned} file(s) on disk · ${result.added} added · ${result.total} in library.`
+          );
+        } else {
+          setScanStatus(`Library refreshed · ${localMediaFiles.length} item(s).`);
+        }
+      } else {
+        setScanStatus(`No rescan handler wired · ${localMediaFiles.length} item(s) shown.`);
+      }
+    } catch (err) {
+      setScanStatus(err instanceof Error ? err.message : 'Rescan failed');
+    } finally {
       setIsScanning(false);
-      setScanStatus(
-        `Index updated: ${localMediaFiles.length} local masters verified · 2 storage arrays synchronized · 0 corrupt blocks.`
-      );
       setTimeout(() => setScanStatus(null), 4500);
-    }, 1200);
+    }
   };
 
   // Convert LocalMediaFileItem to FeaturedMovie format for shared components
