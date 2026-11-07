@@ -28,8 +28,6 @@ import {
   Clapperboard, 
   Eye,
   SlidersHorizontal,
-  Info,
-  Radio,
   Share2
 } from 'lucide-react';
 import { FeaturedMovie } from '../../lib/types';
@@ -46,20 +44,6 @@ export interface StorageDrive {
   readSpeed: string;
   health: string;
   itemCount: number;
-}
-
-export interface PeerWatchPartyInvitation {
-  id: string;
-  peerId: string;
-  hostName: string;
-  hostHandle: string;
-  avatarInitials: string;
-  avatarColor: string;
-  movie: FeaturedMovie;
-  startedAt: string;
-  currentTime: string;
-  viewerCount: number;
-  syncQuality: string;
 }
 
 interface TvLibrariesViewProps {
@@ -173,27 +157,6 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
       itemCount: 85,
     },
   ]);
-
-  // Active Watch Party Invitation from Connected Peer
-  // Strictly only appears when a Connected Peer has started a Watch Party
-  const [activePeerWatchParty, setActivePeerWatchParty] = useState<PeerWatchPartyInvitation | null>(() => {
-    const streamingPeer = peerLibraries.find((p) => p.status === 'online' || p.status === 'streaming');
-    if (!streamingPeer || streamingPeer.media.length === 0) return null;
-
-    return {
-      id: `party-${streamingPeer.id}`,
-      peerId: streamingPeer.id,
-      hostName: streamingPeer.owner,
-      hostHandle: streamingPeer.ownerHandle,
-      avatarInitials: streamingPeer.avatarInitials,
-      avatarColor: streamingPeer.avatarColor,
-      movie: streamingPeer.media[0],
-      startedAt: '14 mins ago',
-      currentTime: '00:42:15',
-      viewerCount: 3,
-      syncQuality: 'Direct P2P 4K Atmos · 0ms Drift',
-    };
-  });
 
   // Real media-directory rescan via server (or parent-provided handler).
   const handleRescan = async () => {
@@ -495,135 +458,6 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
           >
             <X className="w-3.5 h-3.5" />
           </button>
-        </div>
-      )}
-
-      {/* CONNECTED PEER WATCH PARTY INVITATION */}
-      {activePeerWatchParty && (
-        <div className="relative rounded-3xl overflow-hidden border border-pink-500/35 bg-gradient-to-r from-[#180c14] via-[#24111d] to-[#120d10] shadow-2xl shadow-pink-950/40 animate-in fade-in slide-in-from-top-3 duration-300">
-          {/* Ambient Movie Backdrop Glow */}
-          <div className="absolute inset-0 z-0 pointer-events-none">
-            {activePeerWatchParty.movie.bannerUrl && (
-              <img
-                src={activePeerWatchParty.movie.bannerUrl}
-                alt={activePeerWatchParty.movie.title}
-                className="w-full h-full object-cover object-center opacity-25 filter blur-md scale-105"
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-r from-[#140a10] via-[#1a0c16]/90 to-[#140a10]/95" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#140a10] via-transparent to-transparent" />
-          </div>
-
-          <div className="relative z-10 p-6 lg:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            {/* Host Avatar, Live Badge & Movie Information */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 min-w-0 max-w-4xl">
-              {/* Movie Poster with Live Badge Overlay */}
-              <div 
-                onClick={() => {
-                  if (onOpenWatchParty) {
-                    onOpenWatchParty(activePeerWatchParty.movie);
-                  } else {
-                    onPlayMovie(activePeerWatchParty.movie);
-                  }
-                }}
-                className="w-24 sm:w-28 h-36 rounded-2xl overflow-hidden flex-shrink-0 relative group shadow-2xl border border-pink-500/40 bg-zinc-900 cursor-pointer"
-              >
-                <img
-                  src={activePeerWatchParty.movie.posterUrl}
-                  alt={activePeerWatchParty.movie.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
-                />
-                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                  <div className="w-10 h-10 rounded-full bg-pink-500 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-all">
-                    <Play className="w-4 h-4 fill-current ml-0.5" />
-                  </div>
-                </div>
-                <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md bg-rose-600/90 text-white font-mono text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-md">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                  LIVE
-                </div>
-              </div>
-
-              {/* Host and Party Details */}
-              <div className="flex flex-col gap-2">
-                {/* Peer Host Info header */}
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-pink-500/20 border border-pink-400/30">
-                    <div className={`w-5 h-5 rounded-full ${activePeerWatchParty.avatarColor} text-white text-[10px] font-bold flex items-center justify-center shadow-sm`}>
-                      {activePeerWatchParty.avatarInitials}
-                    </div>
-                    <span className="text-[11px] font-mono text-pink-300">
-                      {activePeerWatchParty.hostHandle}
-                    </span>
-                  </div>
-
-                  <span className="text-[11px] font-mono uppercase tracking-widest text-pink-400 font-bold flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5" />
-                    Invited You to Watch Party
-                  </span>
-
-                  <span className="text-zinc-600 font-mono">·</span>
-                  <span className="text-xs font-mono text-emerald-400 flex items-center gap-1">
-                    <Radio className="w-3 h-3 animate-pulse" />
-                    {activePeerWatchParty.viewerCount} peers in sync
-                  </span>
-                </div>
-
-                {/* Movie Title */}
-                <h2 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-                  <span>{activePeerWatchParty.movie.title}</span>
-                  <span className="text-sm font-mono text-zinc-400 font-normal">
-                    ({activePeerWatchParty.movie.releaseYear})
-                  </span>
-                </h2>
-
-                <p className="text-xs text-zinc-300 line-clamp-2 max-w-2xl leading-relaxed">
-                  {activePeerWatchParty.movie.summary}
-                </p>
-
-                {/* Live stream sync specs */}
-                <div className="flex items-center gap-3 flex-wrap text-xs font-mono pt-1 text-zinc-300">
-                  <span className="text-zinc-400">Started {activePeerWatchParty.startedAt}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons: Details, Accept, Decline */}
-            <div className="flex items-center gap-3 flex-shrink-0 self-start md:self-center">
-              <button
-                onClick={() => onInspectMovie(activePeerWatchParty.movie)}
-                className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs border border-white/10 transition-all cursor-pointer shadow-sm active:scale-95"
-                title="View movie details & IMDb metadata"
-              >
-                <Info className="w-4 h-4 text-zinc-300" />
-                <span>Details</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (onOpenWatchParty) {
-                    onOpenWatchParty(activePeerWatchParty.movie);
-                  } else {
-                    onPlayMovie(activePeerWatchParty.movie);
-                  }
-                }}
-                className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-pink-500 hover:bg-pink-400 text-white font-extrabold text-xs shadow-xl shadow-pink-500/25 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                title="Accept invitation and join watch party"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Accept</span>
-              </button>
-
-              <button
-                onClick={() => setActivePeerWatchParty(null)}
-                className="flex items-center gap-1.5 px-4 py-3 rounded-2xl bg-white/5 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 text-xs border border-white/5 hover:border-rose-500/30 transition-all cursor-pointer active:scale-95"
-                title="Decline invitation"
-              >
-                <X className="w-4 h-4" />
-                <span>Decline</span>
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

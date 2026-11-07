@@ -34,7 +34,15 @@ import {
   Layers,
   CheckCircle2,
   AlertCircle,
-  Globe
+  Globe,
+  Subtitles,
+  Video,
+  Cloud,
+  Zap,
+  Clapperboard,
+  BookOpen,
+  Library,
+  type LucideIcon,
 } from 'lucide-react';
 import { apiFetch, clearApiToken, getApiToken, setApiToken } from '../../lib/apiAuth';
 import {
@@ -85,6 +93,40 @@ interface PluginItem {
   isOfficial?: boolean;
   rating?: string;
   downloads?: string;
+}
+
+/** Per-plugin glyph — matched to the addon’s job, not a generic puzzle. */
+function getPluginIcon(plugin: PluginItem): LucideIcon {
+  switch (plugin.id) {
+    case 'cinemeta':
+      return Clapperboard; // movie catalog / metadata
+    case 'opensubtitles':
+      return Subtitles; // caption tracks
+    case 'nascent-p2p':
+      return Video; // P2P / peer video
+    case 'trakt-sync':
+      return Library; // watchlist / library scrobble sync
+    case 'anime-kitsu':
+      return BookOpen; // anime catalog / tracker
+    case 'debrid-bridge':
+      return Zap; // debrid stream bridge
+    default:
+      break;
+  }
+  switch (plugin.category) {
+    case 'catalogs':
+      return Layers;
+    case 'subtitles':
+      return Subtitles;
+    case 'streaming':
+      return Wifi;
+    case 'audio':
+      return Volume2;
+    case 'sync':
+      return Cloud;
+    default:
+      return Puzzle;
+  }
 }
 
 interface UserProfile {
@@ -173,19 +215,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
       isOfficial: true,
       rating: '5.0',
       downloads: '95K'
-    },
-    {
-      id: 'dolby-atmos',
-      name: 'Dolby Atmos & DTS:X Bitstream',
-      version: 'v1.8.0',
-      author: 'Acoustics Lab',
-      category: 'audio',
-      description: 'Direct HDMI eARC bitstream passthrough for 7.1.4 object-based 3D spatial surround sound.',
-      enabled: true,
-      isInstalled: true,
-      isOfficial: true,
-      rating: '4.9',
-      downloads: '118K'
     },
     {
       id: 'trakt-sync',
@@ -766,7 +795,9 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
 
                 {/* Plugin Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pb-4">
-                  {filteredPlugins.map((plugin) => (
+                  {filteredPlugins.map((plugin) => {
+                    const PluginIcon = getPluginIcon(plugin);
+                    return (
                     <div
                       key={plugin.id}
                       className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
@@ -782,7 +813,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                               ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40'
                               : 'bg-white/10 text-zinc-400 border border-white/10'
                           }`}>
-                            <Puzzle className="w-5 h-5" />
+                            <PluginIcon className="w-5 h-5" aria-hidden />
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
@@ -847,7 +878,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

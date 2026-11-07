@@ -6,7 +6,7 @@ import {
   Check, 
   Users, 
   Clock, 
-  ArrowLeft, 
+  Undo2,
   Award,
   Zap,
   Network,
@@ -123,7 +123,10 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
   const [isCreatingList, setIsCreatingList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [isStreamSelectorOpen, setIsStreamSelectorOpen] = useState(false);
-  const [showWatchNowPanel, setShowWatchNowPanel] = useState(false);
+  const [showWatchNowPanel, setShowWatchNowPanel] = useState(() => isTvSeries(movie));
+  /** TV shows must pick a stream source before an episode can play. */
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [sourcePickHint, setSourcePickHint] = useState(false);
   const [isFetchingImdb, setIsFetchingImdb] = useState(false);
   const [currentCast, setCurrentCast] = useState<CastMember[]>(() => {
     return enrichCastArray(movie.cast || []);
@@ -216,9 +219,13 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
     };
   }, [movie?.id, movie?.title]);
 
-  // Reset Watch Now panel when the inspected title changes
+  // Reset Watch Now / source pick when the inspected title changes
   useEffect(() => {
-    setShowWatchNowPanel(false);
+    if (!movie) return;
+    const series = isTvSeries(movie);
+    setShowWatchNowPanel(series);
+    setSelectedSourceId(null);
+    setSourcePickHint(false);
   }, [movie?.id]);
 
   // Popular streaming first (custom brand buttons), then Nascent / add-on alternatives
@@ -445,32 +452,65 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
     return options;
   }, [movie]);
 
-  const backdropImage = movie.bannerUrl || movie.posterUrl;
+  // Prefer poster art for the full-bleed blurred backdrop.
+  const backdropImage = movie.posterUrl || movie.bannerUrl;
   const ratingValue = movie.imdbRating || movie.rating || "8.5";
   const certification = movie.certification || "PG-13";
   const durationText = movie.duration ? `${Math.floor(movie.duration / 60)}h ${movie.duration % 60}m` : "2h 18m";
+  const isSeries = isTvSeries(movie);
+  const selectedSource = watchNowOptions.find((o) => o.id === selectedSourceId) || null;
+
+  const handleSourceClick = (sourceId: string) => {
+    if (isSeries) {
+      setSelectedSourceId(sourceId);
+      setSourcePickHint(false);
+      setShowWatchNowPanel(true);
+      return;
+    }
+    onPlay(movie);
+    onClose();
+  };
+
+  const playEpisode = (ep: (typeof currentEpisodes)[number]) => {
+    if (!selectedSourceId) {
+      setShowWatchNowPanel(true);
+      setSourcePickHint(true);
+      return;
+    }
+    onPlay({
+      ...movie,
+      title: `${movie.title} • S${selectedSeason}:E${ep.episodeNumber} "${ep.title}"`,
+      duration: parseInt(ep.duration, 10) || movie.duration,
+    });
+    onClose();
+  };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#131313]/95 backdrop-blur-3xl overflow-y-auto no-scrollbar select-none animate-in fade-in duration-300">
-      {/* Background Banner with Heavy Gradient Overlays */}
-      <div className="absolute top-0 inset-x-0 h-[500px] overflow-hidden pointer-events-none">
-        <img
-          src={backdropImage}
-          alt={movie.title}
-          className="w-full h-full object-cover object-top opacity-35 filter blur-sm scale-105"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#131313] via-[#131313]/80 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#131313] via-[#131313]/90 to-transparent" />
+    <div className="fixed inset-0 z-50 bg-[#0a0a0c] overflow-y-auto no-scrollbar select-none animate-in fade-in duration-300">
+      {/* Full-viewport blurred poster behind the detail sheet */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden>
+        {backdropImage ? (
+          <img
+            src={backdropImage}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover scale-125 blur-3xl opacity-70"
+          />
+        ) : null}
+        <div className="absolute inset-0 bg-[#0a0a0c]/55" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c] via-[#0a0a0c]/50 to-[#0a0a0c]/30" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0c]/70 via-transparent to-[#0a0a0c]/40" />
       </div>
 
       {/* Top Header Bar */}
       <div className="relative z-10 px-8 lg:px-14 pt-8 flex items-center justify-between">
         <button
+          type="button"
           onClick={onClose}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium text-sm border border-white/15 focus:ring-2 focus:ring-sky-400 focus:outline-none transition-all"
+          className="shrink-0 w-[42px] h-[42px] flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-95 border border-white/15 focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all cursor-pointer"
+          aria-label="Go back"
+          title="Go back"
         >
-          <ArrowLeft className="w-5 h-5 text-sky-400" />
-          <span>Back</span>
+          <Undo2 className="w-5 h-5 text-sky-400" />
         </button>
 
         <div className="flex items-center gap-2.5">
@@ -642,14 +682,14 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
             )}
           </div>
 
-          {/* Action Buttons — single row */}
+          {/* Action Buttons — single row (no hover/scale animations) */}
           <div className="flex flex-nowrap items-center gap-2 my-5 overflow-x-auto no-scrollbar">
             {/* Watch Now toggles inline stream options panel below */}
             <button
               type="button"
               onClick={() => setShowWatchNowPanel((prev) => !prev)}
               aria-expanded={showWatchNowPanel}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full font-extrabold text-xs sm:text-sm shadow-xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400 whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full font-extrabold text-xs sm:text-sm shadow-xl cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400 whitespace-nowrap shrink-0 ${
                 showWatchNowPanel
                   ? 'bg-sky-400 text-black ring-2 ring-sky-300/60'
                   : 'bg-white hover:bg-sky-400 text-black'
@@ -658,7 +698,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
               <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
               <span>Watch Now</span>
               <ChevronDown
-                className={`w-3.5 h-3.5 transition-transform duration-200 ${showWatchNowPanel ? 'rotate-180' : ''}`}
+                className={`w-3.5 h-3.5 ${showWatchNowPanel ? 'rotate-180' : ''}`}
               />
             </button>
 
@@ -667,7 +707,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                 onPlayTrailer(movie);
                 onClose();
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 transition-all transform hover:scale-105 whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 whitespace-nowrap shrink-0"
             >
               <Film className="w-3.5 h-3.5 text-sky-400" />
               <span>Trailer</span>
@@ -675,7 +715,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
 
             <button
               onClick={() => onToggleWatchlist(movie.id)}
-              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-full font-semibold text-xs sm:text-sm border transition-all transform hover:scale-105 whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-full font-semibold text-xs sm:text-sm border whitespace-nowrap shrink-0 ${
                 isWatchlistActive
                   ? 'bg-sky-500/20 border-sky-400 text-sky-300'
                   : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
@@ -699,15 +739,15 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                 onOpenWatchParty(movie);
                 onClose();
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 transition-all transform hover:scale-105 whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 whitespace-nowrap shrink-0"
             >
               <Users className="w-3.5 h-3.5 text-indigo-400" />
               <span>Watch Party</span>
             </button>
           </div>
 
-          {/* Watch Now options panel — custom brand source buttons */}
-          {showWatchNowPanel && (
+          {/* Watch Now options panel — custom brand source buttons (always on for TV shows) */}
+          {(showWatchNowPanel || isSeries) && (
             <div className="mb-5 -mt-2 animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex items-baseline justify-between gap-3 mb-3.5">
                 <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
@@ -715,36 +755,64 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                 </h3>
                 <span className="text-[11px] text-zinc-600">
                   {watchNowOptions.length} {watchNowOptions.length === 1 ? 'source' : 'sources'}
+                  {isSeries && selectedSource ? (
+                    <span className="ml-2 text-sky-400/90">· {selectedSource.label}</span>
+                  ) : null}
                 </span>
               </div>
+              {isSeries && (
+                <p
+                  className={`mb-3 text-[11px] font-medium ${
+                    sourcePickHint ? 'text-amber-300' : 'text-zinc-500'
+                  }`}
+                >
+                  {sourcePickHint
+                    ? 'Choose a source below, then pick an episode to play.'
+                    : selectedSource
+                      ? 'Source selected — pick an episode below to play.'
+                      : 'Choose a source before playing an episode.'}
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-3 sm:gap-3.5">
-                {watchNowOptions.map((opt) => (
+                {watchNowOptions.map((opt) => {
+                  const isSelected = isSeries && selectedSourceId === opt.id;
+                  return (
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => {
-                      onPlay(movie);
-                      onClose();
-                    }}
+                    onClick={() => handleSourceClick(opt.id)}
                     aria-label={opt.label}
-                    title={opt.label}
-                    className="group relative inline-flex items-center justify-center rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#131313] transition-transform duration-200 hover:scale-[1.045] active:scale-[0.97]"
+                    aria-pressed={isSeries ? isSelected : undefined}
+                    title={isSeries ? (isSelected ? `${opt.label} (selected)` : `Select ${opt.label}`) : opt.label}
+                    className={`group relative inline-flex items-center justify-center rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#131313] transition-transform duration-200 hover:scale-[1.045] active:scale-[0.97] ${
+                      isSelected ? 'ring-2 ring-sky-400 ring-offset-2 ring-offset-[#131313] scale-[1.03]' : ''
+                    }`}
                   >
                     {opt.brandButtonSrc ? (
                       <>
                         <span
-                          className="pointer-events-none absolute inset-0 rounded-full bg-sky-400/0 blur-xl transition-all duration-300 group-hover:bg-sky-400/20"
+                          className={`pointer-events-none absolute inset-0 rounded-full blur-xl transition-all duration-300 ${
+                            isSelected ? 'bg-sky-400/30' : 'bg-sky-400/0 group-hover:bg-sky-400/20'
+                          }`}
                           aria-hidden
                         />
                         <img
                           src={opt.brandButtonSrc}
                           alt=""
-                          className="relative h-11 w-auto max-w-[168px] object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:brightness-110 transition-[filter] duration-200"
+                          className={`relative h-11 w-auto max-w-[168px] object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.55)] transition-[filter] duration-200 ${
+                            isSelected ? 'brightness-125' : 'group-hover:brightness-110'
+                          }`}
                           draggable={false}
                         />
                       </>
                     ) : (
-                      <span className="inline-flex items-center gap-2.5 h-11 px-4 rounded-full bg-zinc-950/80 border border-white/12 text-xs font-semibold text-white shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md group-hover:border-sky-400/40 group-hover:bg-zinc-900 transition-colors">
+                      <span
+                        className={`inline-flex items-center gap-2.5 h-11 px-4 rounded-full border text-xs font-semibold text-white shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors ${
+                          isSelected
+                            ? 'bg-sky-500/20 border-sky-400/60'
+                            : 'bg-zinc-950/80 border-white/12 group-hover:border-sky-400/40 group-hover:bg-zinc-900'
+                        }`}
+                      >
                         <span className="shrink-0 opacity-90">{opt.icon}</span>
                         <span className="truncate max-w-[10rem]">{opt.label}</span>
                         {opt.badge ? (
@@ -755,13 +823,14 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                       </span>
                     )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* Season and Episode List — TV series only */}
-          {isTvSeries(movie) && (
+          {isSeries && (
           <div className="my-4 p-5 rounded-3xl bg-white/[0.04] border border-white/10 backdrop-blur-md">
             {/* Header with Season Selector Tabs */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-white/10">
@@ -858,20 +927,25 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                     key={ep.id}
                     className="group flex flex-col sm:flex-row items-start sm:items-center gap-4 p-3 rounded-2xl bg-white/5 hover:bg-white/[0.08] border border-white/10 transition-all"
                   >
-                    {/* Episode Thumbnail - Select to Play */}
+                    {/* Episode Thumbnail — requires a chosen source first */}
                     <button
                       type="button"
-                      onClick={() => {
-                        onPlay({
-                          ...movie,
-                          title: `${movie.title} • S${selectedSeason}:E${ep.episodeNumber} "${ep.title}"`,
-                          duration: parseInt(ep.duration) || movie.duration
-                        });
-                        onClose();
-                      }}
-                      className="group/thumb relative w-full sm:w-44 aspect-video rounded-xl overflow-hidden bg-zinc-900 border border-white/10 hover:border-sky-400 shrink-0 shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all text-left"
-                      title={`Play S${selectedSeason}:E${ep.episodeNumber} - ${ep.title}`}
-                      aria-label={`Play S${selectedSeason}:E${ep.episodeNumber} - ${ep.title}`}
+                      onClick={() => playEpisode(ep)}
+                      className={`group/thumb relative w-full sm:w-44 aspect-video rounded-xl overflow-hidden bg-zinc-900 border shrink-0 shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all text-left ${
+                        selectedSourceId
+                          ? 'border-white/10 hover:border-sky-400'
+                          : 'border-amber-500/30 hover:border-amber-400/60'
+                      }`}
+                      title={
+                        selectedSourceId
+                          ? `Play S${selectedSeason}:E${ep.episodeNumber} - ${ep.title}`
+                          : 'Choose a source above first'
+                      }
+                      aria-label={
+                        selectedSourceId
+                          ? `Play S${selectedSeason}:E${ep.episodeNumber} - ${ep.title}`
+                          : `Choose a source before playing S${selectedSeason}:E${ep.episodeNumber}`
+                      }
                     >
                       <img
                         src={ep.thumbnailUrl || movie.bannerUrl || movie.posterUrl}
@@ -917,16 +991,21 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                 ))}
               </div>
             ) : (
-              /* Sources Grid */
+              /* Sources Grid — select a source (does not skip episode pick) */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {watchNowOptions.map((opt) => (
+                {watchNowOptions.map((opt) => {
+                  const isSelected = selectedSourceId === opt.id;
+                  return (
                   <button
                     key={opt.id}
-                    onClick={() => {
-                      onPlay(movie);
-                      onClose();
-                    }}
-                    className="group flex items-start gap-3 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-sky-400/50 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer"
+                    type="button"
+                    onClick={() => handleSourceClick(opt.id)}
+                    aria-pressed={isSelected}
+                    className={`group flex items-start gap-3 p-3 rounded-2xl border transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer ${
+                      isSelected
+                        ? 'bg-sky-500/15 border-sky-400/60'
+                        : 'bg-white/5 hover:bg-white/10 border-white/10 hover:border-sky-400/50'
+                    }`}
                   >
                     <div className="mt-0.5 p-2 rounded-xl bg-black/40 border border-white/10 group-hover:scale-110 transition-transform shrink-0">
                       {opt.icon}
@@ -939,14 +1018,24 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${opt.badgeColor}`}>
                           {opt.badge}
                         </span>
+                        {isSelected && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-sky-500/25 text-sky-200 border border-sky-400/40">
+                            Selected
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-zinc-400 leading-snug line-clamp-1">
                         {opt.details}
                       </p>
                     </div>
-                    <Play className="w-3.5 h-3.5 text-zinc-500 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+                    {isSelected ? (
+                      <Check className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-1" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5 text-zinc-500 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+                    )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

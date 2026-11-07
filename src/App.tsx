@@ -771,6 +771,8 @@ export default function App() {
         onToggleMenu={handleToggleNavigationMenu}
         activeMediaTitle={activeTab === 'shows' ? currentFeaturedShow.title : currentFeatured.title}
         isSearchOpen={isSearchOpen}
+        onAcceptWatchPartyInvite={(movie) => setWatchPartyMovie(movie)}
+        onInspectWatchPartyInvite={(movie) => setInspectedMovie(movie)}
       />
 
       {/* Main Leanback Canvas with Left Sidebar */}
