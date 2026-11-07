@@ -182,7 +182,7 @@ const watchParties: Record<string, any> = {};
 const defaultMediaItems = [
   {
     id: "bbb-sample",
-    title: "Big Buck Bunny (Sleek Stream)",
+    title: "Big Buck Bunny (Sample)",
     filename: "BigBuckBunny.mp4",
     url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     type: "movie",
@@ -197,14 +197,13 @@ const defaultMediaItems = [
     playCount: 12,
     playProgress: 0,
     isLocal: false,
-    subtitles: [
-      { id: "sub-1-en", label: "English", language: "en", url: "/api/subtitles/bbb/en" },
-      { id: "sub-1-es", label: "Spanish (Español)", language: "es", url: "/api/subtitles/bbb/es" }
-    ]
+    // Sample titles only — no fabricated stream labels. Subtitles: real VTT
+    // files under media/subtitles/ via /api/subtitles (passthrough); none bundled.
+    subtitles: []
   },
   {
     id: "sintel-sample",
-    title: "Sintel (Cinematic Journey)",
+    title: "Sintel (Sample)",
     filename: "Sintel.mp4",
     url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
     type: "movie",
@@ -219,13 +218,11 @@ const defaultMediaItems = [
     playCount: 5,
     playProgress: 0,
     isLocal: false,
-    subtitles: [
-      { id: "sub-2-en", label: "English", language: "en", url: "/api/subtitles/sintel/en" }
-    ]
+    subtitles: []
   },
   {
     id: "tears-sample",
-    title: "Tears of Steel (Sci-Fi Experience)",
+    title: "Tears of Steel (Sample)",
     filename: "TearsOfSteel.mp4",
     url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
     type: "movie",
@@ -240,9 +237,7 @@ const defaultMediaItems = [
     playCount: 8,
     playProgress: 0,
     isLocal: false,
-    subtitles: [
-      { id: "sub-3-en", label: "English", language: "en", url: "/api/subtitles/tears/en" }
-    ]
+    subtitles: []
   }
 ];
 
@@ -407,6 +402,67 @@ if (process.env.GEMINI_API_KEY) {
 app.get("/api/media", (req, res) => {
   const media = readJSON(MEDIA_FILE, defaultMediaItems);
   res.json(media);
+});
+
+// Rescan MEDIA_DIR for video files and merge new local entries into the library.
+const VIDEO_EXTS = new Set([".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"]);
+app.post("/api/media/rescan", (req, res) => {
+  const media = readJSON(MEDIA_FILE, defaultMediaItems);
+  let scanned = 0;
+  let added = 0;
+  try {
+    if (!fs.existsSync(MEDIA_DIR)) {
+      fs.mkdirSync(MEDIA_DIR, { recursive: true });
+    }
+    const entries = fs.readdirSync(MEDIA_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!VIDEO_EXTS.has(ext)) continue;
+      scanned += 1;
+      const already = media.some(
+        (m: any) => m.isLocal && m.filename === entry.name
+      );
+      if (already) continue;
+      const title = path.basename(entry.name, ext).replace(/[._-]+/g, " ").trim() || entry.name;
+      const id = "local_" + Math.random().toString(36).substr(2, 9);
+      media.push({
+        id,
+        title,
+        filename: entry.name,
+        url: `/api/stream?id=${encodeURIComponent(id)}`,
+        type: "movie",
+        duration: 0,
+        posterUrl: "",
+        bannerUrl: "",
+        releaseYear: "",
+        genres: ["Local"],
+        summary: `Local file from media/${entry.name}`,
+        director: "",
+        rating: 0,
+        playCount: 0,
+        playProgress: 0,
+        isLocal: true,
+        subtitles: [],
+      });
+      added += 1;
+    }
+    writeJSON(MEDIA_FILE, media);
+    // Only return real on-disk local files — never remote sample CDN rows
+    // with invented media/ paths for the Libraries UI.
+    const localMedia = media.filter((m: any) => m && m.isLocal === true && m.filename);
+    res.json({
+      ok: true,
+      scanned,
+      added,
+      total: localMedia.length,
+      libraryTotal: media.length,
+      media: localMedia,
+    });
+  } catch (err) {
+    console.error("[IINA SERVER] media rescan failed:", err);
+    res.status(500).json({ error: "Media rescan failed" });
+  }
 });
 
 // 2. Add custom video (or remote link)
@@ -989,46 +1045,21 @@ app.post("/api/imdb/enrich", async (req, res) => {
   }
 });
 
-// 6. Subtitles API - Serves mockup translations or dynamic VTT text
+// 6. Subtitles API — VTT passthrough only (no generated/translated content).
+// Serves media/subtitles/<id>.<lang>.vtt when present; otherwise 404.
 app.get("/api/subtitles/:id/:lang", (req, res) => {
-  const { id, lang } = req.params;
-
-  res.setHeader("Content-Type", "text/vtt");
-
-  if (lang === "es") {
-    res.send(`WEBVTT
-
-1
-00:00:02.000 --> 00:00:06.000
-IINA: Bienvenidos al reproductor de vídeo del futuro.
-
-2
-00:00:10.000 --> 00:00:15.000
-Esta pista de subtítulos en español se generó automáticamente y funciona de forma sincrónica.
-
-3
-00:01:20.000 --> 00:01:25.000
-Observe lo suave que es el control de reproducción remota con nuestro buffer.`);
-  } else {
-    // English
-    res.send(`WEBVTT
-
-1
-00:00:01.000 --> 00:00:05.000
-Welcome to IINA Media Server & Player experience.
-
-2
-00:00:06.000 --> 00:00:11.000
-This is a standard high-performance WebVTT subtitle stream synchronized in real-time.
-
-3
-00:00:15.000 --> 00:00:20.000
-You can adjust subtitle offset timing and see immediate shifts.
-
-4
-00:00:40.000 --> 00:00:45.000
-Invite your friends to watch this together by clicking generating watch party lobby.`);
+  const id = String(req.params.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  const lang = String(req.params.lang || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!id || !lang) {
+    return res.status(400).json({ error: "Invalid subtitle id or language" });
   }
+  const subDir = path.join(MEDIA_DIR, "subtitles");
+  const filePath = path.resolve(subDir, `${id}.${lang}.vtt`);
+  if (!filePath.startsWith(subDir + path.sep) || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "Subtitle track not found" });
+  }
+  res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+  fs.createReadStream(filePath).pipe(res);
 });
 
 // 7. Watch Party Synchronization Rooms Endpoints
@@ -1040,8 +1071,6 @@ Invite your friends to watch this together by clicking generating watch party lo
 // request presenting that token may change playback state. The token
 // is never included in join/sync/chat responses (see publicRoom()).
 // `hostId`/`hostName` are display identity only, never authority.
-// NOTE: no live client calls these endpoints yet (TvWatchParty is a
-// mocked UI), so this changes the API contract, not app behaviour.
 function publicRoom(room: any) {
   const { hostToken, ...publicFields } = room;
   return publicFields;
@@ -1471,69 +1500,9 @@ app.get("/api/telegram/verify", async (req, res) => {
   }
 });
 
-// 10. Local Mock Stremio addon endpoints to show the integration flawlessly
-app.get("/api/stremio-mock/manifest.json", (req, res) => {
-  res.json({
-    id: "community.open.streams",
-    name: "IINA Community Sandbox Addon",
-    description: "A developer-grade Stremio addon hosted locally to test streaming pipelines, custom subtitles, and catalog bindings.",
-    version: "1.2.0",
-    resources: ["stream"],
-    types: ["movie"],
-    idPrefixes: ["bbb", "sintel", "tears"]
-  });
-});
-
-app.get("/api/stremio-mock/stream/:type/:id.json", (req, res) => {
-  const { id } = req.params;
-  
-  if (id.includes("bbb-sample") || id.includes("bbb")) {
-    return res.json({
-      streams: [
-        {
-          name: "IINA Direct Core [1080p]",
-          title: "Big Buck Bunny - Direct High-Speed CDN Mirror\n⚡ Low Latency • mp4 duration: 9m 56s",
-          url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-        },
-        {
-          name: "IINA Core Mirror [720p]",
-          title: "Big Buck Bunny - Compressed Web Optimized Stream\n📱 Mobile safe • AAC Audio",
-          url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-        }
-      ]
-    });
-  } else if (id.includes("sintel-sample") || id.includes("sintel")) {
-    return res.json({
-      streams: [
-        {
-          name: "Scenic 1080p Master Stream",
-          title: "Sintel (2010) - Cinematic Ultra Master\n🌟 EAC3 Surround Sound • Direct Link",
-          url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
-        },
-        {
-          name: "Comic-con compressed stream",
-          title: "Sintel Low Resolution Mobile Proxy\n📱 Cellular Friendly H264",
-          url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
-        }
-      ]
-    });
-  } else {
-    return res.json({
-      streams: [
-        {
-          name: "Tears Cyber Rip [1080p]",
-          title: "Tears of Steel - Direct UHD mp4 Stream\n🔥 H264 profile",
-          url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
-        },
-        {
-          name: "Tears Compressed Stream",
-          title: "Tears of Steel Mobile Web Rip\n📱 480p fallback",
-          url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
-        }
-      ]
-    });
-  }
-});
+// Stremio/Torrentio mock endpoints deleted. Sample Google CDN videos in
+// defaultMediaItems are labelled "(Sample)" and are not presented as
+// resolved Stremio streams.
 
 // ===========================================================================
 // WAKU v2 DECENTRALIZED MESSAGING PROTOCOL SERVICE

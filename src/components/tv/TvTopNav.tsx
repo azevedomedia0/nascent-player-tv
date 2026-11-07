@@ -12,11 +12,39 @@ import {
   Users,
   Bell,
   Menu,
-  Lock
+  Lock,
+  CheckCircle2,
+  X,
+  Info,
+  Radio,
 } from 'lucide-react';
 import { AppLogo } from '../AppLogo';
+import { FeaturedMovie } from '../../lib/types';
 
 export type TvTab = 'movies' | 'shows' | 'local-media' | 'shared-libraries' | 'library' | 'watchlists' | 'search';
+
+type AppNotification =
+  | {
+      id: string;
+      kind: 'message';
+      title: string;
+      message: string;
+      time: string;
+      read: boolean;
+    }
+  | {
+      id: string;
+      kind: 'watch-party';
+      title: string;
+      message: string;
+      time: string;
+      read: boolean;
+      hostHandle: string;
+      avatarInitials: string;
+      avatarColor: string;
+      viewerCount: number;
+      movie: FeaturedMovie;
+    };
 
 interface TvTopNavProps {
   activeTab: TvTab;
@@ -31,6 +59,10 @@ interface TvTopNavProps {
   activeMediaTitle?: string;
   isEngineActive?: boolean;
   isSearchOpen?: boolean;
+  /** Accept a peer watch-party invite from the notifications panel. */
+  onAcceptWatchPartyInvite?: (movie: FeaturedMovie) => void;
+  /** Open title details for a watch-party invite. */
+  onInspectWatchPartyInvite?: (movie: FeaturedMovie) => void;
 }
 
 export const TvTopNav: React.FC<TvTopNavProps> = ({
@@ -44,7 +76,9 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
   onToggleMenu,
   activeMediaTitle,
   isEngineActive = true,
-  isSearchOpen = false
+  isSearchOpen = false,
+  onAcceptWatchPartyInvite,
+  onInspectWatchPartyInvite,
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
 
@@ -65,31 +99,66 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
   }, []);
 
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [notifications, setNotifications] = useState([
+  const [notifications, setNotifications] = useState<AppNotification[]>([
+    {
+      id: 'wp-dune',
+      kind: 'watch-party',
+      title: 'Watch Party Invite',
+      message:
+        'Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family.',
+      time: '14m ago',
+      read: false,
+      hostHandle: '@steven_az',
+      avatarInitials: 'SA',
+      avatarColor: 'bg-sky-500',
+      viewerCount: 3,
+      movie: {
+        id: 'dune-two',
+        title: 'Dune: Part Two',
+        releaseYear: '2024',
+        posterUrl:
+          'https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg',
+        bannerUrl:
+          'https://image.tmdb.org/t/p/original/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg',
+        genres: ['Sci-Fi', 'Adventure', 'Action'],
+        rating: 8.5,
+        certification: 'PG-13',
+        director: 'Denis Villeneuve',
+        summary:
+          'Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family.',
+      },
+    },
     {
       id: 'n1',
+      kind: 'message',
       title: 'New Episode Alert',
       message: 'Severance Season 2 Episode 3 is now ready to stream in 4K HDR.',
       time: '15m ago',
-      read: false
+      read: false,
     },
     {
       id: 'n2',
+      kind: 'message',
       title: 'Peer Mesh Active',
       message: "Steven's 4K Vault Shared Node connected at 98 Mbps Gigabit link.",
       time: '1h ago',
-      read: false
+      read: false,
     },
     {
       id: 'n3',
+      kind: 'message',
       title: 'Hardware Decoder',
       message: 'Zero-transcode HEVC Main 10 hardware acceleration pipeline active.',
       time: '3h ago',
-      read: true
-    }
+      read: true,
+    },
   ]);
   const notificationRef = useRef<HTMLDivElement>(null);
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const dismissNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -204,7 +273,7 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
 
           {/* Notifications Dropdown Panel */}
           {isNotificationsOpen && (
-            <div className="absolute right-0 top-full mt-2.5 w-80 p-3.5 rounded-2xl bg-[#0c0c11]/98 backdrop-blur-2xl border border-white/15 shadow-2xl z-50 animate-in fade-in duration-150">
+            <div className="absolute right-0 top-full mt-2.5 w-[22.5rem] p-3.5 rounded-2xl bg-[#0c0c11]/98 backdrop-blur-2xl border border-white/15 shadow-2xl z-50 animate-in fade-in duration-150">
               <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-white/10">
                 <div className="flex items-center gap-2">
                   <Bell className="w-4 h-4 text-sky-400" />
@@ -226,26 +295,129 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
                 )}
               </div>
 
-              <div className="space-y-2 max-h-64 overflow-y-auto no-scrollbar">
+              <div className="space-y-2.5 max-h-[28rem] overflow-y-auto no-scrollbar">
                 {notifications.length === 0 ? (
                   <p className="py-6 text-center text-[11px] text-zinc-500">No messages</p>
                 ) : (
-                  notifications.map((n) => (
-                    <div
-                      key={n.id}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
-                        n.read
-                          ? 'bg-white/[0.03] border-white/5 opacity-75'
-                          : 'bg-white/[0.08] border-white/15'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-white line-clamp-1">{n.title}</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">{n.time}</span>
+                  notifications.map((n) =>
+                    n.kind === 'watch-party' ? (
+                      <div
+                        key={n.id}
+                        className="relative overflow-hidden rounded-xl border border-pink-500/35 bg-gradient-to-br from-[#180c14] via-[#24111d] to-[#120d10] text-left"
+                      >
+                        {n.movie.bannerUrl ? (
+                          <img
+                            src={n.movie.bannerUrl}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover opacity-20 blur-sm pointer-events-none"
+                            aria-hidden
+                          />
+                        ) : null}
+                        <div className="relative z-10 p-3 space-y-2.5">
+                          <div className="flex items-start gap-2.5">
+                            <div className="relative w-12 h-[4.5rem] rounded-lg overflow-hidden border border-pink-500/40 shrink-0 bg-zinc-900">
+                              <img
+                                src={n.movie.posterUrl}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                              <span className="absolute top-1 left-1 px-1 py-0.5 rounded bg-rose-600/95 text-white font-mono text-[8px] font-bold uppercase tracking-wider">
+                                Live
+                              </span>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span
+                                    className={`w-4 h-4 rounded-full ${n.avatarColor} text-white text-[8px] font-bold flex items-center justify-center shrink-0`}
+                                  >
+                                    {n.avatarInitials}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-pink-300 truncate">
+                                    {n.hostHandle}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-zinc-500 font-mono shrink-0">{n.time}</span>
+                              </div>
+                              <p className="text-[10px] font-mono uppercase tracking-wider text-pink-400 font-bold flex items-center gap-1 mb-1">
+                                <Users className="w-3 h-3 shrink-0" />
+                                Invited you to Watch Party
+                              </p>
+                              <p className="text-xs font-bold text-white line-clamp-1">
+                                {n.movie.title}{' '}
+                                <span className="text-zinc-400 font-mono font-normal">
+                                  ({n.movie.releaseYear})
+                                </span>
+                              </p>
+                              <p className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+                                <Radio className="w-2.5 h-2.5 animate-pulse" />
+                                {n.viewerCount} peers in sync
+                              </p>
+                              <p className="text-[10px] text-zinc-400 leading-snug line-clamp-2 mt-1">
+                                {n.message}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              title="View details"
+                              onClick={() => {
+                                onInspectWatchPartyInvite?.(n.movie);
+                                setIsNotificationsOpen(false);
+                                setNotifications((prev) =>
+                                  prev.map((item) =>
+                                    item.id === n.id ? { ...item, read: true } : item
+                                  )
+                                );
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[10px] font-semibold border border-white/10 cursor-pointer"
+                            >
+                              <Info className="w-3 h-3" />
+                              Details
+                            </button>
+                            <button
+                              type="button"
+                              title="Accept invitation"
+                              onClick={() => {
+                                onAcceptWatchPartyInvite?.(n.movie);
+                                dismissNotification(n.id);
+                                setIsNotificationsOpen(false);
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-pink-500 hover:bg-pink-400 text-white text-[10px] font-extrabold shadow-md shadow-pink-500/25 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              title="Decline invitation"
+                              onClick={() => dismissNotification(n.id)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 text-[10px] border border-white/5 cursor-pointer"
+                            >
+                              <X className="w-3 h-3" />
+                              Decline
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-zinc-300 leading-snug line-clamp-2">{n.message}</p>
-                    </div>
-                  ))
+                    ) : (
+                      <div
+                        key={n.id}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          n.read
+                            ? 'bg-white/[0.03] border-white/5 opacity-75'
+                            : 'bg-white/[0.08] border-white/15'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-white line-clamp-1">{n.title}</span>
+                          <span className="text-[10px] text-zinc-500 font-mono">{n.time}</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-300 leading-snug line-clamp-2">{n.message}</p>
+                      </div>
+                    )
+                  )
                 )}
               </div>
             </div>

@@ -46,11 +46,23 @@ export interface SharedPeerSummary {
   bandwidth: string;
 }
 
+/** Sidebar → Libraries: which source should drive the media grid. */
+export type LibrarySourceSelection =
+  | { kind: 'local-all' }
+  | { kind: 'folder'; id: string; pathPrefix: string; label: string }
+  | { kind: 'device'; id: string; pathPrefix: string; label: string }
+  | { kind: 'share'; id: string; pathPrefix: string; label: string }
+  | { kind: 'peers-all' }
+  | { kind: 'peer'; peerId: string };
+
 interface TvSidebarProps {
   activeTab: TvTab;
   onTabChange: (tab: TvTab) => void;
   selectedPeerId: string | null;
   onSelectPeer: (peerId: string | null) => void;
+  /** Currently selected library source (folder / drive / share / peer). */
+  librarySource: LibrarySourceSelection;
+  onSelectLibrarySource: (source: LibrarySourceSelection) => void;
   peers: SharedPeerSummary[];
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -64,6 +76,8 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
   onTabChange,
   selectedPeerId,
   onSelectPeer,
+  librarySource,
+  onSelectLibrarySource,
   peers,
   isCollapsed,
   onToggleCollapse,
@@ -74,7 +88,12 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
   const isLocalActive = activeTab === 'local-media' || activeTab === 'library';
   const isSharedActive = activeTab === 'shared-libraries';
 
-  const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
+  const activeSourceId =
+    librarySource.kind === 'folder' ||
+    librarySource.kind === 'device' ||
+    librarySource.kind === 'share'
+      ? librarySource.id
+      : null;
   const [isAddShareOpen, setIsAddShareOpen] = useState(false);
   const [newShareName, setNewShareName] = useState('');
   const [newShareProtocol, setNewShareProtocol] = useState<'SMB' | 'NFS' | 'DLNA' | 'WebDAV'>('SMB');
@@ -218,7 +237,13 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
       ping: `${Math.floor(Math.random() * 4) + 1}ms`,
     };
     setNetworkShares((prev) => [...prev, newShare]);
-    setActiveSourceId(newShare.id);
+    onSelectPeer(null);
+    onSelectLibrarySource({
+      kind: 'share',
+      id: newShare.id,
+      pathPrefix: newShare.address,
+      label: newShare.name,
+    });
     onTabChange('local-media');
     setIsAddShareOpen(false);
     setNewShareName('');
@@ -315,15 +340,18 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center w-full' : ''}`}>
             <button
               onClick={() => {
-                onTabChange('local-media');
+                onSelectLibrarySource({ kind: 'local-all' });
                 onSelectPeer(null);
+                onTabChange('local-media');
               }}
               className={`group relative flex items-center ${
                 isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'w-full justify-between px-3.5 py-3'
               } rounded-2xl font-medium text-sm focus:outline-none ${
-                isLocalActive
+                isLocalActive && librarySource.kind === 'local-all'
                   ? 'text-white font-semibold'
-                  : 'text-zinc-300 hover:text-white'
+                  : isLocalActive
+                    ? 'text-white font-semibold'
+                    : 'text-zinc-300 hover:text-white'
               }`}
               title="Local Media Files (Direct Storage)"
             >
@@ -353,21 +381,34 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   </span>
                 </div>
 
-                {importedFolders.map((folder) => (
+                {importedFolders.map((folder) => {
+                  const isFolderSelected =
+                    librarySource.kind === 'folder' && librarySource.id === folder.id;
+                  return (
                   <button
                     key={folder.id}
                     type="button"
                     onClick={() => {
-                      onTabChange('local-media');
                       onSelectPeer(null);
+                      onSelectLibrarySource({
+                        kind: 'folder',
+                        id: folder.id,
+                        pathPrefix: folder.path,
+                        label: folder.name,
+                      });
+                      onTabChange('local-media');
                     }}
-                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs text-zinc-300 hover:text-white hover:bg-white/5 focus:ring-2 focus:ring-sky-400 focus:outline-none focus:bg-white/10 transition-all text-left cursor-pointer group"
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs focus:ring-2 focus:ring-sky-400 focus:outline-none transition-all text-left cursor-pointer group ${
+                      isFolderSelected
+                        ? 'bg-sky-500/20 text-white border border-sky-400/40 font-semibold'
+                        : 'text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent'
+                    }`}
                     title={`${folder.name} (${folder.path})`}
                   >
                     <div className="flex items-center gap-2 truncate min-w-0">
                       <Folder className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
                       <div className="flex flex-col truncate">
-                        <span className="truncate text-xs font-medium text-zinc-200 group-hover:text-white">{folder.name}</span>
+                        <span className={`truncate text-xs font-medium ${isFolderSelected ? 'text-white' : 'text-zinc-200 group-hover:text-white'}`}>{folder.name}</span>
                         <span className="text-[10px] text-zinc-500 font-mono truncate">{folder.path}</span>
                       </div>
                     </div>
@@ -375,7 +416,8 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                       {folder.fileCount}
                     </span>
                   </button>
-                ))}
+                  );
+                })}
 
                 <button
                   type="button"
@@ -393,8 +435,9 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           <div className={`flex flex-col ${isCollapsed ? 'items-center justify-center w-full mt-0' : 'gap-1.5 mt-1'}`}>
             <button
               onClick={() => {
-                onTabChange('shared-libraries');
                 onSelectPeer(null);
+                onSelectLibrarySource({ kind: 'peers-all' });
+                onTabChange('shared-libraries');
               }}
               className={`group relative flex items-center ${
                 isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'w-full justify-between px-3.5 py-3'
@@ -442,8 +485,9 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                     <button
                       key={peer.id}
                       onClick={() => {
-                        onTabChange('shared-libraries');
+                        onSelectLibrarySource({ kind: 'peer', peerId: peer.id });
                         onSelectPeer(peer.id);
+                        onTabChange('shared-libraries');
                       }}
                       className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-all text-left focus:outline-none ${
                         isPeerSelected
@@ -506,9 +550,14 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                 <button
                   key={dev.id}
                   onClick={() => {
-                    setActiveSourceId(dev.id);
-                    onTabChange('local-media');
                     onSelectPeer(null);
+                    onSelectLibrarySource({
+                      kind: 'device',
+                      id: dev.id,
+                      pathPrefix: dev.mountPoint,
+                      label: dev.name,
+                    });
+                    onTabChange('local-media');
                   }}
                   className={`group flex items-center ${
                     isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'justify-between px-3 py-2'
@@ -566,9 +615,14 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                 <button
                   key={share.id}
                   onClick={() => {
-                    setActiveSourceId(share.id);
-                    onTabChange('local-media');
                     onSelectPeer(null);
+                    onSelectLibrarySource({
+                      kind: 'share',
+                      id: share.id,
+                      pathPrefix: share.address,
+                      label: share.name,
+                    });
+                    onTabChange('local-media');
                   }}
                   className={`group flex items-center ${
                     isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'justify-between px-3 py-2'

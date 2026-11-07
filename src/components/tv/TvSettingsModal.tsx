@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   X, 
   Settings, 
@@ -13,7 +13,6 @@ import {
   RotateCcw,
   Languages,
   Film,
-  HardDrive,
   Moon,
   Palette,
   Tv,
@@ -34,7 +33,24 @@ import {
   Layers,
   CheckCircle2,
   AlertCircle,
-  Globe
+  Globe,
+  Subtitles,
+  Video,
+  Cloud,
+  Zap,
+  Clapperboard,
+  BookOpen,
+  Library,
+  Bluetooth,
+  BluetoothConnected,
+  Speaker,
+  Headphones,
+  Camera,
+  Pencil,
+  Battery,
+  Link2,
+  Unlink,
+  type LucideIcon,
 } from 'lucide-react';
 import { apiFetch, clearApiToken, getApiToken, setApiToken } from '../../lib/apiAuth';
 import {
@@ -43,12 +59,33 @@ import {
   applyUiTheme,
   getStoredUiTheme,
 } from '../../lib/uiTheme';
+import {
+  type BtAudioDeviceType,
+  type BtDeviceKind,
+  type SavedBtDevice,
+  type BtPreferences,
+  type WebBluetoothDevice,
+  DEFAULT_BT_PREFS,
+  audioTypeLabel,
+  connectGatt,
+  disconnectGatt,
+  displayName,
+  gamepadsToDevices,
+  getPermittedDevices,
+  isWebBluetoothSupported,
+  kindLabel,
+  loadBtPreferences,
+  loadSavedBtDevices,
+  readBatteryPercent,
+  requestPairDevice,
+  saveBtDevices,
+  saveBtPreferences,
+  toSavedFromWebDevice,
+} from '../../lib/tvBluetooth';
 
 interface TvSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onToggleRemote?: () => void;
-  isRemoteOpen?: boolean;
   onOpenPlugins?: () => void;
   eqGains: {
     hz60: number;
@@ -69,8 +106,6 @@ export type SettingCategory =
   | 'remote'
   | 'audio-video' 
   | 'playback' 
-  | 'subtitles' 
-  | 'storage' 
   | 'network';
 
 interface PluginItem {
@@ -87,11 +122,46 @@ interface PluginItem {
   downloads?: string;
 }
 
+/** Per-plugin glyph — matched to the addon’s job, not a generic puzzle. */
+function getPluginIcon(plugin: PluginItem): LucideIcon {
+  switch (plugin.id) {
+    case 'cinemeta':
+      return Clapperboard; // movie catalog / metadata
+    case 'opensubtitles':
+      return Subtitles; // caption tracks
+    case 'nascent-p2p':
+      return Video; // P2P / peer video
+    case 'trakt-sync':
+      return Library; // watchlist / library scrobble sync
+    case 'anime-kitsu':
+      return BookOpen; // anime catalog / tracker
+    case 'debrid-bridge':
+      return Zap; // debrid stream bridge
+    default:
+      break;
+  }
+  switch (plugin.category) {
+    case 'catalogs':
+      return Layers;
+    case 'subtitles':
+      return Subtitles;
+    case 'streaming':
+      return Wifi;
+    case 'audio':
+      return Volume2;
+    case 'sync':
+      return Cloud;
+    default:
+      return Puzzle;
+  }
+}
+
 interface UserProfile {
   id: string;
   name: string;
   initials: string;
   color: string;
+  avatarUrl?: string | null;
   isKid: boolean;
   isPrimary?: boolean;
 }
@@ -99,8 +169,6 @@ interface UserProfile {
 export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   isOpen,
   onClose,
-  onToggleRemote,
-  isRemoteOpen = false,
   onOpenPlugins,
   eqGains,
   onEqChange,
@@ -119,6 +187,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [activeProfileId, setActiveProfileId] = useState<string>('1');
   const [editingName, setEditingName] = useState(false);
   const [profileNameInput, setProfileNameInput] = useState('Steven Azevedo');
+  const [profileAvatarDraft, setProfileAvatarDraft] = useState<string | null>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement>(null);
   const [maturityRating, setMaturityRating] = useState<'all' | 'pg13' | 'family'>('all');
   const [autoplayTrailers, setAutoplayTrailers] = useState(true);
   const [showContinueWatching, setShowContinueWatching] = useState(true);
@@ -175,19 +245,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
       downloads: '95K'
     },
     {
-      id: 'dolby-atmos',
-      name: 'Dolby Atmos & DTS:X Bitstream',
-      version: 'v1.8.0',
-      author: 'Acoustics Lab',
-      category: 'audio',
-      description: 'Direct HDMI eARC bitstream passthrough for 7.1.4 object-based 3D spatial surround sound.',
-      enabled: true,
-      isInstalled: true,
-      isOfficial: true,
-      rating: '4.9',
-      downloads: '118K'
-    },
-    {
       id: 'trakt-sync',
       name: 'Trakt.tv Scrobbler & Cloud Sync',
       version: 'v2.4.0',
@@ -225,26 +282,373 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
       isOfficial: false,
       rating: '4.9',
       downloads: '175K'
-    },
-    {
-      id: 'fanart-tv',
-      name: 'Fanart.tv Ultra HD ClearArt',
-      version: 'v1.1.2',
-      author: 'Fanart Archive',
-      category: 'catalogs',
-      description: 'Transparent movie logos, disc art, animated posters, and 4K character banners.',
-      enabled: false,
-      isInstalled: false,
-      isOfficial: false,
-      rating: '4.6',
-      downloads: '42K'
     }
   ]);
 
   // Audio / Video & Existing Preferences
-  const [ambilightMode, setAmbilightMode] = useState('vibrant');
   const [nightMode, setNightMode] = useState(false);
   const [audioPassthrough, setAudioPassthrough] = useState(true);
+
+  const [btPrefs, setBtPrefs] = useState<BtPreferences>(() =>
+    typeof window !== 'undefined' ? loadBtPreferences() : { ...DEFAULT_BT_PREFS }
+  );
+  const [btDevices, setBtDevices] = useState<SavedBtDevice[]>(() =>
+    typeof window !== 'undefined' ? loadSavedBtDevices() : []
+  );
+  const [btScanning, setBtScanning] = useState(false);
+  const [btFeedback, setBtFeedback] = useState<string | null>(null);
+  const [btDetailId, setBtDetailId] = useState<string | null>(null);
+  const [btRenameDraft, setBtRenameDraft] = useState('');
+  const [btEditingName, setBtEditingName] = useState(false);
+  const [btEditingLocalName, setBtEditingLocalName] = useState(false);
+  const [btLocalNameDraft, setBtLocalNameDraft] = useState('');
+  const [btShowAdvanced, setBtShowAdvanced] = useState(false);
+  const webBtLiveRef = useRef<Map<string, WebBluetoothDevice>>(new Map());
+
+  const btSupported = isWebBluetoothSupported();
+
+  const kindIcon = (kind: BtDeviceKind): LucideIcon => {
+    switch (kind) {
+      case 'remote':
+        return Tv;
+      case 'gamepad':
+        return Gamepad2;
+      case 'speaker':
+        return Speaker;
+      case 'headphones':
+        return Headphones;
+      case 'car':
+        return Activity;
+      case 'hearing':
+        return Headphones;
+      default:
+        return Bluetooth;
+    }
+  };
+
+  const mergeGamepads = (list: SavedBtDevice[]) => {
+    const withoutPads = list.filter((d) => d.source !== 'gamepad');
+    return [...gamepadsToDevices(), ...withoutPads];
+  };
+
+  const persistDevices = (updater: (prev: SavedBtDevice[]) => SavedBtDevice[]) => {
+    setBtDevices((prev) => {
+      const next = updater(prev);
+      saveBtDevices(next);
+      return next;
+    });
+  };
+
+  const updateBtPrefs = (patch: Partial<BtPreferences>) => {
+    setBtPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveBtPreferences(next);
+      return next;
+    });
+  };
+
+  const flashBt = (msg: string) => {
+    setBtFeedback(msg);
+    window.setTimeout(() => setBtFeedback((cur) => (cur === msg ? null : cur)), 4000);
+  };
+
+  const attachGattListeners = (device: WebBluetoothDevice) => {
+    const onDisconnect = () => {
+      persistDevices((prev) =>
+        prev.map((d) =>
+          d.id === device.id
+            ? {
+                ...d,
+                status: 'paired',
+                detail: 'Disconnected · tap Connect to reconnect',
+                batteryPercent: null,
+              }
+            : d
+        )
+      );
+    };
+    device.addEventListener('gattserverdisconnected', onDisconnect);
+  };
+
+  const refreshGamepadDevices = () => {
+    setBtDevices((prev) => mergeGamepads(prev));
+  };
+
+  useEffect(() => {
+    refreshGamepadDevices();
+    const onConnect = () => refreshGamepadDevices();
+    const onDisconnect = () => refreshGamepadDevices();
+    window.addEventListener('gamepadconnected', onConnect);
+    window.addEventListener('gamepaddisconnected', onDisconnect);
+    return () => {
+      window.removeEventListener('gamepadconnected', onConnect);
+      window.removeEventListener('gamepaddisconnected', onDisconnect);
+    };
+  }, []);
+
+  // Restore previously permitted Web Bluetooth devices (Chromium getDevices).
+  useEffect(() => {
+    if (!btSupported || !btPrefs.adapterOn) return;
+    let cancelled = false;
+    (async () => {
+      const permitted = await getPermittedDevices();
+      if (cancelled || permitted.length === 0) return;
+      for (const device of permitted) {
+        webBtLiveRef.current.set(device.id, device);
+        attachGattListeners(device);
+        const connected = !!device.gatt?.connected;
+        let battery: number | null = null;
+        if (connected && btPrefs.showBattery) {
+          battery = await readBatteryPercent(device);
+        }
+        persistDevices((prev) => {
+          const existing = prev.find((d) => d.id === device.id);
+          const base = existing ?? toSavedFromWebDevice(device, connected);
+          return mergeGamepads([
+            {
+              ...base,
+              name: device.name?.trim() || base.name,
+              status: connected ? 'connected' : 'paired',
+              detail: connected
+                ? 'Connected · restored from browser permission'
+                : 'Paired · previously allowed in this browser',
+              batteryPercent: battery,
+              lastSeenAt: new Date().toISOString(),
+            },
+            ...prev.filter((d) => d.id !== device.id && d.source !== 'gamepad'),
+          ]);
+        });
+        const savedMeta = loadSavedBtDevices().find((d) => d.id === device.id);
+        const shouldAuto = btPrefs.autoConnectSaved && (savedMeta?.autoConnect ?? true);
+        if (!connected && shouldAuto) {
+          try {
+            await connectGatt(device);
+            if (btPrefs.showBattery) {
+              battery = await readBatteryPercent(device);
+            }
+            persistDevices((prev) =>
+              prev.map((d) =>
+                d.id === device.id
+                  ? {
+                      ...d,
+                      status: 'connected',
+                      detail: 'Connected · auto-reconnect',
+                      batteryPercent: battery,
+                      lastSeenAt: new Date().toISOString(),
+                    }
+                  : d
+              )
+            );
+          } catch {
+            /* device out of range */
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once when adapter/support ready
+  }, [btSupported, btPrefs.adapterOn]);
+
+  const handlePairNewDevice = async () => {
+    setBtFeedback(null);
+    if (!btPrefs.adapterOn) {
+      flashBt('Turn Bluetooth on to pair a new device.');
+      return;
+    }
+    setBtScanning(true);
+    try {
+      refreshGamepadDevices();
+      const device = await requestPairDevice();
+      webBtLiveRef.current.set(device.id, device);
+      attachGattListeners(device);
+
+      let connected = false;
+      try {
+        connected = await connectGatt(device);
+      } catch {
+        connected = false;
+      }
+      let battery: number | null = null;
+      if (connected && btPrefs.showBattery) {
+        battery = await readBatteryPercent(device);
+      }
+
+      const row = toSavedFromWebDevice(device, connected);
+      row.batteryPercent = battery;
+      if (connected) {
+        row.detail =
+          battery != null
+            ? `Connected · battery ${battery}%`
+            : 'Connected · GATT link active';
+      }
+
+      persistDevices((prev) => {
+        const without = prev.filter((d) => d.id !== row.id && d.source !== 'gamepad');
+        return mergeGamepads([row, ...without]);
+      });
+      setBtDetailId(row.id);
+      setBtRenameDraft(displayName(row));
+      flashBt(
+        `Paired “${row.name}”. Classic A2DP speakers may still need OS Bluetooth pairing.`
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/cancel|abort/i.test(msg)) {
+        flashBt('Pairing cancelled.');
+      } else if (/not available/i.test(msg)) {
+        flashBt(
+          'Web Bluetooth is not available. Use a Chromium browser with Bluetooth, or connect a USB/HID gamepad.'
+        );
+      } else {
+        flashBt(msg || 'Bluetooth pairing failed.');
+      }
+    } finally {
+      setBtScanning(false);
+    }
+  };
+
+  const handleConnectDevice = async (id: string) => {
+    if (!btPrefs.adapterOn) {
+      flashBt('Turn Bluetooth on first.');
+      return;
+    }
+    const live = webBtLiveRef.current.get(id);
+    persistDevices((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, status: 'connecting', detail: 'Connecting…' } : d))
+    );
+    try {
+      if (!live) {
+        // Re-open picker to regain a live handle for this accessory
+        const device = await requestPairDevice();
+        webBtLiveRef.current.set(device.id, device);
+        attachGattListeners(device);
+        await connectGatt(device);
+        let battery: number | null = null;
+        if (btPrefs.showBattery) battery = await readBatteryPercent(device);
+        persistDevices((prev) => {
+          const without = prev.filter((d) => d.id !== device.id && d.source !== 'gamepad');
+          const previous = prev.find((d) => d.id === id || d.id === device.id);
+          const row = toSavedFromWebDevice(device, true);
+          return mergeGamepads([
+            {
+              ...row,
+              customName: previous?.customName,
+              audioDeviceType: previous?.audioDeviceType ?? row.audioDeviceType,
+              mediaAudio: previous?.mediaAudio ?? row.mediaAudio,
+              phoneCalls: previous?.phoneCalls ?? row.phoneCalls,
+              contactSharing: previous?.contactSharing ?? row.contactSharing,
+              autoConnect: previous?.autoConnect ?? true,
+              batteryPercent: battery,
+              detail:
+                battery != null ? `Connected · battery ${battery}%` : 'Connected · GATT link active',
+              pairedAt: previous?.pairedAt ?? row.pairedAt,
+            },
+            ...without.filter((d) => d.id !== id),
+          ]);
+        });
+        flashBt('Connected.');
+        return;
+      }
+      await connectGatt(live);
+      let battery: number | null = null;
+      if (btPrefs.showBattery) battery = await readBatteryPercent(live);
+      persistDevices((prev) =>
+        prev.map((d) =>
+          d.id === id
+            ? {
+                ...d,
+                status: 'connected',
+                batteryPercent: battery,
+                detail:
+                  battery != null
+                    ? `Connected · battery ${battery}%`
+                    : 'Connected · GATT link active',
+                lastSeenAt: new Date().toISOString(),
+              }
+            : d
+        )
+      );
+      const label = btDevices.find((d) => d.id === id);
+      flashBt(label ? `Connected to “${displayName(label)}”.` : 'Connected.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      persistDevices((prev) =>
+        prev.map((d) =>
+          d.id === id
+            ? { ...d, status: 'paired', detail: 'Connection failed · try again while in range' }
+            : d
+        )
+      );
+      flashBt(/cancel|abort/i.test(msg) ? 'Connect cancelled.' : msg || 'Could not connect.');
+    }
+  };
+
+  const handleDisconnectDevice = (id: string) => {
+    const live = webBtLiveRef.current.get(id);
+    if (live) disconnectGatt(live);
+    persistDevices((prev) =>
+      prev.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              status: 'paired',
+              detail: 'Disconnected · stays paired until you Forget',
+              batteryPercent: null,
+            }
+          : d
+      )
+    );
+    flashBt('Disconnected.');
+  };
+
+  const handleForgetDevice = (id: string) => {
+    const live = webBtLiveRef.current.get(id);
+    if (live) {
+      disconnectGatt(live);
+      webBtLiveRef.current.delete(id);
+    }
+    persistDevices((prev) => prev.filter((d) => d.id !== id));
+    if (btDetailId === id) setBtDetailId(null);
+    flashBt('Device forgotten. Pair again to reconnect.');
+  };
+
+  const handleRenameDevice = (id: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    persistDevices((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, customName: trimmed } : d))
+    );
+    setBtEditingName(false);
+    flashBt('Device renamed on this TV only.');
+  };
+
+  const patchDevice = (id: string, patch: Partial<SavedBtDevice>) => {
+    persistDevices((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  };
+
+  const handleAdapterToggle = (on: boolean) => {
+    updateBtPrefs({ adapterOn: on });
+    if (!on) {
+      webBtLiveRef.current.forEach((dev) => disconnectGatt(dev));
+      persistDevices((prev) =>
+        prev.map((d) =>
+          d.source === 'web-bt' && d.status === 'connected'
+            ? {
+                ...d,
+                status: 'paired',
+                detail: 'Bluetooth off · device stays saved',
+                batteryPercent: null,
+              }
+            : d
+        )
+      );
+      flashBt('Bluetooth turned off for this app session.');
+    } else {
+      flashBt('Bluetooth on. Saved devices can reconnect.');
+    }
+  };
 
   // Playback & Video
   const [autoPlayNext, setAutoPlayNext] = useState(true);
@@ -313,6 +717,38 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   if (!isOpen) return null;
 
   const currentProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+  const displayedAvatarUrl = editingName
+    ? profileAvatarDraft
+    : currentProfile.avatarUrl ?? null;
+
+  const beginProfileEdit = () => {
+    setProfileNameInput(currentProfile.name);
+    setProfileAvatarDraft(currentProfile.avatarUrl ?? null);
+    setEditingName(true);
+  };
+
+  const cancelProfileEdit = () => {
+    setEditingName(false);
+    setProfileAvatarDraft(currentProfile.avatarUrl ?? null);
+    if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = '';
+  };
+
+  const handleProfilePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setProfileFeedback('Photo must be under 4 MB.');
+      setTimeout(() => setProfileFeedback(null), 3000);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setProfileAvatarDraft(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSaveProfileName = () => {
     if (!profileNameInput.trim()) return;
@@ -324,17 +760,22 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               name: profileNameInput.trim(),
               initials: profileNameInput
                 .trim()
-                .split(' ')
+                .split(/\s+/)
                 .map((n) => n[0])
                 .join('')
                 .slice(0, 2)
                 .toUpperCase() || 'TV',
+              avatarUrl: profileAvatarDraft,
             }
           : p
       )
     );
     setEditingName(false);
-    setProfileFeedback('Profile name updated successfully.');
+    setProfileFeedback(
+      profileAvatarDraft !== (currentProfile.avatarUrl ?? null)
+        ? 'Profile name and photo updated.'
+        : 'Profile name updated successfully.'
+    );
     setTimeout(() => setProfileFeedback(null), 3000);
   };
 
@@ -452,11 +893,9 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
           <div className="w-64 border-r border-white/10 p-4 flex flex-col gap-1.5 bg-black/40 overflow-y-auto no-scrollbar">
             {[
               { id: 'profile', label: 'Profile & Account', icon: User },
-              { id: 'remote', label: 'TV Remote & D-Pad', icon: Gamepad2 },
+              { id: 'remote', label: 'Bluetooth Remote', icon: Bluetooth },
               { id: 'audio-video', label: 'Display & Sound', icon: Palette },
               { id: 'playback', label: 'Playback & Video', icon: Film },
-              { id: 'subtitles', label: 'Subtitles & Audio', icon: Languages },
-              { id: 'storage', label: 'Storage & Drives', icon: HardDrive },
               { id: 'network', label: 'Server & LAN', icon: Server },
               { id: 'plugins', label: 'Plugins & Addons', icon: Puzzle, count: pluginsList.filter(p => p.isInstalled && p.enabled).length },
             ].map((cat) => {
@@ -501,28 +940,95 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                 {/* Profile Banner Card */}
                 <div className="p-6 rounded-3xl bg-gradient-to-r from-sky-950/40 via-indigo-950/30 to-black/80 border border-sky-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
                   <div className="flex items-center gap-4">
-                    <div className={`w-16 h-16 rounded-2xl bg-gradient-to-tr ${currentProfile.color} flex items-center justify-center text-white font-extrabold text-2xl shadow-xl ring-2 ring-white/20`}>
-                      {currentProfile.initials}
+                    <input
+                      ref={profilePhotoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleProfilePhotoChange}
+                    />
+                    <div className="relative flex flex-col items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editingName) {
+                            profilePhotoInputRef.current?.click();
+                          } else {
+                            beginProfileEdit();
+                            // Open picker after edit mode mounts
+                            requestAnimationFrame(() => profilePhotoInputRef.current?.click());
+                          }
+                        }}
+                        className={`relative w-16 h-16 rounded-2xl bg-gradient-to-tr ${currentProfile.color} flex items-center justify-center text-white font-extrabold text-2xl shadow-xl ring-2 ring-white/20 overflow-hidden group focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer`}
+                        title={editingName ? 'Change profile photo' : 'Edit profile'}
+                        aria-label={editingName ? 'Change profile photo' : 'Edit profile'}
+                      >
+                        {displayedAvatarUrl ? (
+                          <img
+                            src={displayedAvatarUrl}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="relative z-0">{currentProfile.initials}</span>
+                        )}
+                        {editingName && (
+                          <span className="absolute inset-0 z-10 flex items-center justify-center bg-black/55 opacity-100 group-hover:bg-black/70 transition-colors">
+                            <Camera className="w-6 h-6 text-white drop-shadow" />
+                          </span>
+                        )}
+                      </button>
+                      {editingName && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => profilePhotoInputRef.current?.click()}
+                            className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
+                          >
+                            Change photo
+                          </button>
+                          {profileAvatarDraft && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProfileAvatarDraft(null);
+                                if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = '';
+                              }}
+                              className="text-[10px] text-zinc-400 hover:text-rose-300 font-semibold cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div>
                       {editingName ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <input
                             type="text"
                             value={profileNameInput}
                             onChange={(e) => setProfileNameInput(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSaveProfileName();
-                              if (e.key === 'Escape') setEditingName(false);
+                              if (e.key === 'Escape') cancelProfileEdit();
                             }}
                             autoFocus
                             className="px-3 py-1 bg-black/60 border border-sky-400 rounded-xl text-white font-bold text-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
                           />
                           <button
+                            type="button"
                             onClick={handleSaveProfileName}
-                            className="px-3 py-1 bg-sky-500 text-black text-xs font-bold rounded-xl hover:bg-sky-400 transition-colors"
+                            className="px-3 py-1 bg-sky-500 text-black text-xs font-bold rounded-xl hover:bg-sky-400 transition-colors cursor-pointer"
                           >
                             Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelProfileEdit}
+                            className="px-3 py-1 bg-white/10 text-zinc-300 hover:text-white text-xs font-semibold rounded-xl hover:bg-white/15 transition-colors cursor-pointer"
+                          >
+                            Cancel
                           </button>
                         </div>
                       ) : (
@@ -531,10 +1037,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                             {currentProfile.name}
                           </h3>
                           <button
-                            onClick={() => {
-                              setProfileNameInput(currentProfile.name);
-                              setEditingName(true);
-                            }}
+                            type="button"
+                            onClick={beginProfileEdit}
                             className="text-xs text-sky-400 hover:text-sky-300 underline font-medium cursor-pointer"
                           >
                             Edit
@@ -542,9 +1046,9 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         </div>
                       )}
                       <div className="flex items-center gap-2.5 mt-1">
-                        <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[11px] font-semibold flex items-center gap-1">
-                          <ShieldCheck className="w-3 h-3 text-sky-400" />
-                          Nascent TV Plus · Active Member
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                          Nascent Premium · Active Member
                         </span>
                         {currentProfile.isKid && (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold">
@@ -779,7 +1283,9 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
 
                 {/* Plugin Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pb-4">
-                  {filteredPlugins.map((plugin) => (
+                  {filteredPlugins.map((plugin) => {
+                    const PluginIcon = getPluginIcon(plugin);
+                    return (
                     <div
                       key={plugin.id}
                       className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
@@ -795,7 +1301,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                               ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40'
                               : 'bg-white/10 text-zinc-400 border border-white/10'
                           }`}>
-                            <Puzzle className="w-5 h-5" />
+                            <PluginIcon className="w-5 h-5" aria-hidden />
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
@@ -860,7 +1366,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1013,29 +1520,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </button>
                   </div>
                 </div>
-
-                {/* Ambilight Setting */}
-                <div className="pt-2 flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/10">
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">Ambilight Ambient Glow</h4>
-                    <span className="text-xs text-zinc-400">Dynamic lighting reflecting colors around the display</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {['off', 'subtle', 'vibrant'].map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setAmbilightMode(m)}
-                        className={`px-4 py-1.5 rounded-full text-xs uppercase font-bold transition-all ${
-                          ambilightMode === m
-                            ? 'bg-sky-500 text-black'
-                            : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                        }`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1132,12 +1616,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* 5. Subtitles & Audio Languages */}
-            {activeCategory === 'subtitles' && (
-              <div className="flex flex-col gap-5">
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Subtitles & Audio Language</h3>
                   <p className="text-xs text-zinc-400 mb-4">Typography, positioning, styling, and scraper settings.</p>
@@ -1222,8 +1701,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* Storage & Drives */}
-            {activeCategory === 'storage' && (
+            {/* Server & LAN (includes storage / cache) */}
+            {activeCategory === 'network' && (
               <div className="flex flex-col gap-5">
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Storage, Drives & Cache</h3>
@@ -1283,12 +1762,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* 8. Server & LAN */}
-            {activeCategory === 'network' && (
-              <div className="flex flex-col gap-5">
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Local Server & Network Diagnostics</h3>
                   <p className="text-xs text-zinc-400 mb-4">Built-in reverse proxy, port binding, DLNA, and LAN sync.</p>
@@ -1431,95 +1905,542 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 9. Virtual TV Remote Controller */}
-            {activeCategory === 'remote' && (
-              <div className="flex flex-col gap-6">
-                <div>
-                  <h3 className="font-display font-bold text-lg text-white mb-1">Android TV Remote Controller</h3>
-                  <p className="text-xs text-zinc-400 mb-5">
-                    Navigate the interface using the virtual directional pad, media controls, and quick action shortcuts.
-                  </p>
+            {/* Bluetooth — Android Connected devices / Connection preferences model */}
+            {activeCategory === 'remote' && (() => {
+              const connected = btDevices.filter((d) => d.status === 'connected' || d.status === 'connecting');
+              const saved = btDevices.filter(
+                (d) => d.status === 'paired' || d.status === 'available'
+              );
+              const detailDevice = btDetailId
+                ? btDevices.find((d) => d.id === btDetailId) ?? null
+                : null;
 
-                  <div className="p-6 rounded-3xl bg-gradient-to-br from-sky-950/40 via-zinc-900/60 to-black/80 border border-sky-500/20 mb-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center shadow-lg">
-                        <Gamepad2 className="w-7 h-7" />
+              const renderDeviceRow = (device: SavedBtDevice) => {
+                const Icon = kindIcon(device.kind);
+                const isActive = btDetailId === device.id;
+                return (
+                  <div
+                    key={device.id}
+                    className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-colors ${
+                      isActive
+                        ? 'bg-sky-500/10 border-sky-400/40'
+                        : 'bg-white/5 border-white/10 hover:bg-white/[0.07]'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBtDetailId(device.id);
+                        setBtRenameDraft(displayName(device));
+                        setBtEditingName(false);
+                      }}
+                      className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                          device.status === 'connected'
+                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                            : 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+                        }`}
+                      >
+                        <Icon className="w-5 h-5" />
                       </div>
-                      <div>
-                        <h4 className="text-base font-bold text-white mb-0.5">Virtual D-Pad Remote Overlay</h4>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-white truncate">
+                            {displayName(device)}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wider font-bold text-zinc-500">
+                            {kindLabel(device.kind)}
+                          </span>
+                          {btPrefs.showBattery && device.batteryPercent != null && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-zinc-400">
+                              <Battery className="w-3 h-3" />
+                              {device.batteryPercent}%
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-zinc-500 truncate">
+                          {device.status === 'connecting'
+                            ? 'Connecting…'
+                            : device.status === 'connected'
+                              ? device.detail || 'Active'
+                              : device.detail || 'Saved · not connected'}
+                        </p>
+                      </div>
+                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {device.source !== 'gamepad' && device.status !== 'connected' && device.status !== 'connecting' && (
+                        <button
+                          type="button"
+                          disabled={!btPrefs.adapterOn}
+                          onClick={() => void handleConnectDevice(device.id)}
+                          className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/30 disabled:opacity-40 cursor-pointer"
+                        >
+                          Connect
+                        </button>
+                      )}
+                      {device.status === 'connected' && device.source !== 'gamepad' && (
+                        <button
+                          type="button"
+                          onClick={() => handleDisconnectDevice(device.id)}
+                          className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold text-zinc-300 border border-white/15 hover:bg-white/10 cursor-pointer"
+                        >
+                          Disconnect
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        title="Device settings"
+                        onClick={() => {
+                          setBtDetailId(device.id);
+                          setBtRenameDraft(displayName(device));
+                          setBtEditingName(false);
+                        }}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 border border-white/10 cursor-pointer"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+              <div className="flex flex-col gap-5 animate-in fade-in duration-150">
+                {/* Master switch + this device name (Android Connection preferences → Bluetooth) */}
+                <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center border ${
+                          btPrefs.adapterOn
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                            : 'bg-zinc-800 text-zinc-500 border-white/10'
+                        }`}
+                      >
+                        {btPrefs.adapterOn ? (
+                          <BluetoothConnected className="w-5 h-5" />
+                        ) : (
+                          <Bluetooth className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-display font-bold text-lg text-white">Bluetooth</h3>
                         <p className="text-xs text-zinc-400">
-                          {isRemoteOpen 
-                            ? 'Virtual remote is currently active on screen.' 
-                            : 'Open floating Android TV remote for directional browsing & playback.'}
+                          {btPrefs.adapterOn
+                            ? 'On · visible as this TV’s device name when pairing'
+                            : 'Off · saved devices stay listed but won’t connect'}
                         </p>
                       </div>
                     </div>
-
                     <button
-                      onClick={() => onToggleRemote?.()}
-                      className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-lg flex items-center gap-2 focus:ring-2 focus:ring-sky-400 focus:outline-none ${
-                        isRemoteOpen
-                          ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
-                          : 'bg-sky-500 hover:bg-sky-400 text-black shadow-sky-500/30'
+                      type="button"
+                      role="switch"
+                      aria-checked={btPrefs.adapterOn}
+                      onClick={() => handleAdapterToggle(!btPrefs.adapterOn)}
+                      className={`w-12 h-7 rounded-full transition-colors relative shrink-0 cursor-pointer ${
+                        btPrefs.adapterOn ? 'bg-sky-500' : 'bg-zinc-700'
                       }`}
                     >
-                      <Gamepad2 className="w-4 h-4" />
-                      <span>{isRemoteOpen ? 'Close Remote Overlay' : 'Launch TV Remote'}</span>
+                      <span
+                        className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all ${
+                          btPrefs.adapterOn ? 'right-0.5' : 'left-0.5'
+                        }`}
+                      />
                     </button>
                   </div>
 
-                  {/* Remote Features & Mapping Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Remote Keyboard Shortcuts</h4>
-                      <div className="flex flex-col gap-2 text-xs">
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">D-Pad Up / Down</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">↑ / ↓ Scroll</kbd>
+                  <div className="border-t border-white/10 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                        Device name
+                      </p>
+                      {btEditingLocalName ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            value={btLocalNameDraft}
+                            onChange={(e) => setBtLocalNameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && btLocalNameDraft.trim()) {
+                                updateBtPrefs({ deviceName: btLocalNameDraft.trim() });
+                                setBtEditingLocalName(false);
+                                flashBt('This TV’s Bluetooth name updated.');
+                              }
+                              if (e.key === 'Escape') setBtEditingLocalName(false);
+                            }}
+                            autoFocus
+                            className="px-2.5 py-1 bg-black/50 border border-sky-400 rounded-lg text-sm text-white focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!btLocalNameDraft.trim()) return;
+                              updateBtPrefs({ deviceName: btLocalNameDraft.trim() });
+                              setBtEditingLocalName(false);
+                              flashBt('This TV’s Bluetooth name updated.');
+                            }}
+                            className="text-xs font-bold text-sky-400 cursor-pointer"
+                          >
+                            Rename
+                          </button>
                         </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">D-Pad Left / Right</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">← / → Carousel</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Center OK / Select</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Enter / Space</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-300">Back / Return</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Esc / Backspace</kbd>
-                        </div>
-                      </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBtLocalNameDraft(btPrefs.deviceName);
+                            setBtEditingLocalName(true);
+                          }}
+                          className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold text-white hover:text-sky-300 cursor-pointer"
+                        >
+                          <span className="truncate">{btPrefs.deviceName}</span>
+                          <Pencil className="w-3 h-3 text-zinc-500" />
+                        </button>
+                      )}
                     </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Controller Specs & Connectivity</h4>
-                      <div className="flex flex-col gap-2 text-xs">
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Profile Protocol</span>
-                          <span className="font-semibold text-zinc-200">Android TV D-Pad HID</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Haptic Feedback</span>
-                          <span className="font-semibold text-emerald-400">Enabled (Vibrate)</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Repeat Delay</span>
-                          <span className="font-mono text-zinc-300">180 ms</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-300">Status</span>
-                          <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            Connected
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] ${
+                        btSupported
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                      }`}
+                    >
+                      <BluetoothConnected className="w-3 h-3" />
+                      {btSupported ? 'Web Bluetooth ready' : 'Web Bluetooth unavailable'}
+                    </span>
                   </div>
                 </div>
+
+                {btFeedback && (
+                  <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-[11px] text-zinc-300">
+                    {btFeedback}
+                  </div>
+                )}
+
+                {/* Pair new device */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-white">Pair new device</h4>
+                    <p className="text-xs text-zinc-400">
+                      Put the accessory in pairing mode, then choose it in the system picker. Gamepads
+                      also appear automatically via the HID Gamepad API.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePairNewDevice()}
+                    disabled={btScanning || !btPrefs.adapterOn}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-black text-xs font-bold shadow-md shadow-sky-500/20 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400 shrink-0"
+                  >
+                    {btScanning ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>{btScanning ? 'Waiting for picker…' : 'Pair new device'}</span>
+                  </button>
+                </div>
+
+                {/* Currently connected / Media devices */}
+                <div>
+                  <h4 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider px-1 mb-2">
+                    Currently connected
+                  </h4>
+                  {connected.length === 0 ? (
+                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-dashed border-white/10 text-center">
+                      <p className="text-xs text-zinc-500">
+                        No accessories connected. Pair a new device or tap Connect on a saved one.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">{connected.map(renderDeviceRow)}</div>
+                  )}
+                </div>
+
+                {/* Saved devices */}
+                <div>
+                  <h4 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider px-1 mb-2">
+                    Saved devices
+                  </h4>
+                  {saved.length === 0 ? (
+                    <div className="p-5 rounded-2xl bg-white/5 border border-dashed border-white/15 text-center">
+                      <Bluetooth className="w-6 h-6 text-zinc-500 mx-auto mb-2" />
+                      <p className="text-xs text-zinc-400">
+                        No saved devices yet. Paired accessories stay here until you Forget them —
+                        same as Android’s Saved devices list.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">{saved.map(renderDeviceRow)}</div>
+                  )}
+                </div>
+
+                {/* Per-device details sheet (gear menu) */}
+                {detailDevice && (
+                  <div className="p-5 rounded-2xl bg-gradient-to-b from-sky-950/40 to-black/40 border border-sky-500/30 space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold text-sky-400 uppercase tracking-wider">
+                          Device details
+                        </p>
+                        {btEditingName ? (
+                          <div className="flex items-center gap-2 mt-1">
+                            <input
+                              value={btRenameDraft}
+                              onChange={(e) => setBtRenameDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRenameDevice(detailDevice.id, btRenameDraft);
+                                if (e.key === 'Escape') setBtEditingName(false);
+                              }}
+                              autoFocus
+                              className="px-2.5 py-1 bg-black/50 border border-sky-400 rounded-lg text-base font-bold text-white focus:outline-none w-full max-w-xs"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRenameDevice(detailDevice.id, btRenameDraft)}
+                              className="text-xs font-bold text-sky-400 cursor-pointer"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBtRenameDraft(displayName(detailDevice));
+                              setBtEditingName(true);
+                            }}
+                            className="mt-0.5 flex items-center gap-2 text-xl font-display font-extrabold text-white hover:text-sky-200 cursor-pointer"
+                          >
+                            <span className="truncate">{displayName(detailDevice)}</span>
+                            <Pencil className="w-4 h-4 text-zinc-500" />
+                          </button>
+                        )}
+                        <p className="text-xs text-zinc-400 mt-1">
+                          {detailDevice.name !== displayName(detailDevice)
+                            ? `Hardware name: ${detailDevice.name} · `
+                            : ''}
+                          {kindLabel(detailDevice.kind)}
+                          {detailDevice.source === 'gamepad' ? ' · HID gamepad' : ' · Web Bluetooth'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setBtDetailId(null)}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                        aria-label="Close device details"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Audio device type — Android Media devices categorization */}
+                    {detailDevice.source !== 'gamepad' && (
+                      <div>
+                        <p className="text-xs font-semibold text-zinc-300 mb-2">Audio device type</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(
+                            [
+                              'not-set',
+                              'speaker',
+                              'headphones',
+                              'car',
+                              'hearing',
+                              'other',
+                            ] as BtAudioDeviceType[]
+                          ).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => patchDevice(detailDevice.id, { audioDeviceType: t })}
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer ${
+                                detailDevice.audioDeviceType === t
+                                  ? 'bg-sky-500 text-black border-sky-400'
+                                  : 'bg-white/5 text-zinc-300 border-white/10 hover:bg-white/10'
+                              }`}
+                            >
+                              {audioTypeLabel(t)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Profile toggles */}
+                    {detailDevice.source !== 'gamepad' && (
+                      <div className="space-y-3 border-t border-white/10 pt-3">
+                        {(
+                          [
+                            {
+                              key: 'mediaAudio' as const,
+                              label: 'Media audio',
+                              hint: 'Play movies and music through this accessory',
+                            },
+                            {
+                              key: 'phoneCalls' as const,
+                              label: 'Phone calls',
+                              hint: 'Route call audio when a headset profile is available',
+                            },
+                            {
+                              key: 'contactSharing' as const,
+                              label: 'Contact sharing',
+                              hint: 'Share contacts with car kits (PBAP)',
+                            },
+                            {
+                              key: 'autoConnect' as const,
+                              label: 'Auto-connect',
+                              hint: 'Reconnect automatically when in range',
+                            },
+                          ] as const
+                        ).map((row) => (
+                          <div key={row.key} className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold text-zinc-200">{row.label}</p>
+                              <p className="text-[11px] text-zinc-500">{row.hint}</p>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={detailDevice[row.key]}
+                              onClick={() =>
+                                patchDevice(detailDevice.id, {
+                                  [row.key]: !detailDevice[row.key],
+                                })
+                              }
+                              className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
+                                detailDevice[row.key] ? 'bg-sky-500' : 'bg-zinc-700'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${
+                                  detailDevice[row.key] ? 'right-0.5' : 'left-0.5'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2 border-t border-white/10 pt-3">
+                      {detailDevice.source !== 'gamepad' && detailDevice.status === 'connected' && (
+                        <button
+                          type="button"
+                          onClick={() => handleDisconnectDevice(detailDevice.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold border border-white/15 text-zinc-200 hover:bg-white/10 cursor-pointer"
+                        >
+                          <Unlink className="w-3.5 h-3.5" />
+                          Disconnect
+                        </button>
+                      )}
+                      {detailDevice.source !== 'gamepad' && detailDevice.status !== 'connected' && (
+                        <button
+                          type="button"
+                          disabled={!btPrefs.adapterOn}
+                          onClick={() => void handleConnectDevice(detailDevice.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold bg-sky-500 text-black hover:bg-sky-400 disabled:opacity-50 cursor-pointer"
+                        >
+                          <Link2 className="w-3.5 h-3.5" />
+                          Connect
+                        </button>
+                      )}
+                      {detailDevice.source !== 'gamepad' && (
+                        <button
+                          type="button"
+                          onClick={() => handleForgetDevice(detailDevice.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold border border-rose-500/40 text-rose-300 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Forget
+                        </button>
+                      )}
+                      {detailDevice.source === 'gamepad' && (
+                        <p className="text-[11px] text-zinc-500 self-center">
+                          HID gamepads disconnect when unplugged — they aren’t forgotten from a list.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Advanced / Connection preferences */}
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setBtShowAdvanced((v) => !v)}
+                    className="w-full flex items-center justify-between text-left cursor-pointer"
+                  >
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">Connection preferences</h4>
+                      <p className="text-xs text-zinc-400">
+                        Advanced options similar to Android’s Bluetooth preferences
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-zinc-400 transition-transform ${
+                        btShowAdvanced ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {btShowAdvanced && (
+                    <div className="mt-4 space-y-3 border-t border-white/10 pt-3">
+                      {(
+                        [
+                          {
+                            key: 'autoConnectSaved' as const,
+                            label: 'Auto-connect saved devices',
+                            hint: 'Try GATT reconnect when this panel opens',
+                          },
+                          {
+                            key: 'preferHdAudio' as const,
+                            label: 'Prefer HD audio',
+                            hint: 'Request higher-quality codecs when the accessory supports them',
+                          },
+                          {
+                            key: 'mediaAudioOnly' as const,
+                            label: 'Media audio only',
+                            hint: 'Don’t route system / call audio to Bluetooth sinks',
+                          },
+                          {
+                            key: 'showBattery' as const,
+                            label: 'Show battery level',
+                            hint: 'Read Battery Service when the device exposes it',
+                          },
+                        ] as const
+                      ).map((row) => (
+                        <div key={row.key} className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-zinc-200">{row.label}</p>
+                            <p className="text-[11px] text-zinc-500">{row.hint}</p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={btPrefs[row.key]}
+                            onClick={() => updateBtPrefs({ [row.key]: !btPrefs[row.key] })}
+                            className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
+                              btPrefs[row.key] ? 'bg-sky-500' : 'bg-zinc-700'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${
+                                btPrefs[row.key] ? 'right-0.5' : 'left-0.5'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      ))}
+                      <p className="text-[11px] text-zinc-500 pt-1">
+                        Classic Bluetooth audio (A2DP/HFP) is still managed by the OS. This panel uses
+                        Web Bluetooth for GATT accessories and the Gamepad API for controllers.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       </div>
