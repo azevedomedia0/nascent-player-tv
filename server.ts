@@ -32,10 +32,15 @@ dotenv.config();
 // gateway (NASCENT_GATEWAY_PASSWORD) and optionally NASCENT_API_TOKEN.
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) || 3000 : 3000;
 const HOST = process.env.HOST || "127.0.0.1";
-// Optional shared token. When NASCENT_API_TOKEN is set, mutating API
-// calls and the sensitive GET endpoints (proxy, benchmark) require
-// `Authorization: Bearer <token>` or `x-api-token: <token>`.
-const API_TOKEN = process.env.NASCENT_API_TOKEN || "";
+// Shared API token. Mutating API calls and the sensitive GET endpoints
+// (proxy, benchmark) require `Authorization: Bearer <token>` or
+// `x-api-token: <token>`. The token is always set: NASCENT_API_TOKEN
+// wins when provided, otherwise it is read from data/api-token.txt, or
+// generated once and saved there (mode 0600) on first run — see
+// resolveApiToken() below. The app never needs a manually chosen token.
+let API_TOKEN = (process.env.NASCENT_API_TOKEN || "").trim();
+let API_TOKEN_SOURCE: "env" | "file" | "generated" | "none" =
+  API_TOKEN ? "env" : "none";
 const app = express();
 
 app.disable("x-powered-by");
@@ -86,16 +91,13 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
 }
 app.use(rateLimit);
 
-// Optional token auth (see API_TOKEN above). Off by default so local
-// use is unchanged. For browser/remote access prefer the gateway
-// (NASCENT_GATEWAY_PASSWORD) — never bake a token into the SPA via
-// VITE_*. When the gateway is enabled it already authenticated the
-// request, so skip the API token check (browsers only send one
-// Authorization header). NASCENT_API_TOKEN is for scripts/curl when
-// the gateway is off.
+// Token auth (see API_TOKEN above). Always on: the token is either
+// set via NASCENT_API_TOKEN or auto-generated and saved to
+// data/api-token.txt on first run, so the API is never wide open —
+// even on localhost. The browser app sends it from Settings →
+// Server & LAN → API Token (kept in that tab's sessionStorage).
 app.use("/api", (req, res, next) => {
   if (!API_TOKEN) return next();
-  if (isGatewayEnabled()) return next();
   // Status is always readable so Settings can show proxy state.
   if (req.method === "GET" && req.path === "/proxy/status") return next();
   const sensitiveGet =
@@ -106,6 +108,8 @@ app.use("/api", (req, res, next) => {
   if (req.method === "GET" && !sensitiveGet) return next();
   const auth = req.get("authorization") || "";
   const bearer = /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, "") : "";
+  // Prefer Bearer; fall back to x-api-token so Basic gateway auth can
+  // coexist (browsers only send one Authorization header).
   const supplied = bearer || req.get("x-api-token") || "";
   if (supplied !== API_TOKEN) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -126,6 +130,50 @@ if (!fs.existsSync(DATA_DIR)) {
 if (!fs.existsSync(MEDIA_DIR)) {
   fs.mkdirSync(MEDIA_DIR, { recursive: true });
 }
+
+// API token, resolved once at startup (see the API_TOKEN declaration
+// above). Precedence: NASCENT_API_TOKEN env var → data/api-token.txt
+// from a previous run → generate a fresh random token and save it.
+// The file is gitignored (see .gitignore) and written mode 0600 so
+// only the server's user can read it. A generated token is printed
+// once in the startup log — that is the only time it appears there;
+// on later starts it is read back from the file, so it survives
+// restarts and the token pasted in the app's Settings keeps working.
+const API_TOKEN_FILE = path.join(DATA_DIR, "api-token.txt");
+function resolveApiToken(): string {
+  if (API_TOKEN) return API_TOKEN;
+  try {
+    if (fs.existsSync(API_TOKEN_FILE)) {
+      const saved = fs.readFileSync(API_TOKEN_FILE, "utf8").trim();
+      if (saved) {
+        API_TOKEN_SOURCE = "file";
+        return saved;
+      }
+    }
+  } catch {
+    // Unreadable file — fall through and generate a new token below.
+  }
+  const generated = crypto.randomBytes(32).toString("hex");
+  try {
+    fs.writeFileSync(API_TOKEN_FILE, `${generated}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.warn(
+      `[IINA SERVER] WARNING: could not save the generated API token to ${API_TOKEN_FILE} (${(err as Error).message}). ` +
+        "Token auth is off for this run — set NASCENT_API_TOKEN to enable it."
+    );
+    API_TOKEN_SOURCE = "none";
+    return "";
+  }
+  API_TOKEN_SOURCE = "generated";
+  console.log("[IINA SERVER] No NASCENT_API_TOKEN was set — generated one automatically:");
+  console.log(`[IINA SERVER]   ${generated}`);
+  console.log(
+    `[IINA SERVER] Saved to ${API_TOKEN_FILE} — paste it in the app under ` +
+      "Settings → Server & LAN → API Token (kept in that browser tab only)."
+  );
+  return generated;
+}
+API_TOKEN = resolveApiToken();
 
 // In-memory sync partitions (Watch parties are active sessions)
 const watchParties: Record<string, any> = {};
@@ -1724,6 +1772,16 @@ async function startServer() {
   server.listen(PORT, HOST, () => {
     console.log(`[IINA SERVER] Streaming container online on http://${HOST}:${PORT}`);
     console.log(`[IINA SERVER] Built-in reverse proxy: GET /api/proxy?url=…`);
+    if (API_TOKEN_SOURCE === "env") {
+      console.log("[IINA SERVER] API token auth enabled (NASCENT_API_TOKEN from environment).");
+    } else if (API_TOKEN_SOURCE === "file") {
+      console.log(
+        `[IINA SERVER] API token auth enabled (token saved in ${API_TOKEN_FILE} — ` +
+          "paste it in Settings → Server & LAN → API Token if the app asks for one)."
+      );
+    } else if (API_TOKEN_SOURCE === "generated") {
+      console.log("[IINA SERVER] API token auth enabled (token generated on this first run — see above).");
+    }
     if (isGatewayEnabled()) {
       console.log(
         `[IINA SERVER] Gateway auth enabled (HTTP Basic) — user "${getReverseProxyStatus().gatewayUser}"`
