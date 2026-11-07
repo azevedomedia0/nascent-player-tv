@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { LibrarySourceSelection } from './TvSidebar';
 import { 
   HardDrive, 
   Folder, 
@@ -57,6 +58,8 @@ interface TvLibrariesViewProps {
   onRescan?: () => Promise<{ scanned: number; added: number; total: number } | void>;
   selectedPeerId: string | null;
   onSelectPeer: (peerId: string | null) => void;
+  /** Sidebar selection that filters the media grid. */
+  librarySource: LibrarySourceSelection;
 }
 
 export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
@@ -69,11 +72,14 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
   onRescan,
   selectedPeerId,
   onSelectPeer,
+  librarySource,
 }) => {
   // Navigation tabs within Libraries
   type LibraryTab = 'all' | 'longest' | 'masters' | 'played' | 'volumes' | 'network' | 'peers';
   const [activeLibraryTab, setActiveLibraryTab] = useState<LibraryTab>(
-    selectedPeerId ? 'peers' : 'all'
+    selectedPeerId || librarySource.kind === 'peers-all' || librarySource.kind === 'peer'
+      ? 'peers'
+      : 'all'
   );
 
   // View modes: 'grid' (cinematic poster tiles) vs 'inspector' (detailed technical audio/video rows)
@@ -82,8 +88,14 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
   // Search filter inside library
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Selected storage drive filter
-  const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
+  // Keep the Libraries grid tab in sync with sidebar selection.
+  useEffect(() => {
+    if (librarySource.kind === 'peer' || librarySource.kind === 'peers-all' || selectedPeerId) {
+      setActiveLibraryTab('peers');
+      return;
+    }
+    setActiveLibraryTab('all');
+  }, [librarySource, selectedPeerId]);
 
   // Rescan state & feedback
   const [isScanning, setIsScanning] = useState(false);
@@ -222,7 +234,21 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
     return localMediaFiles.slice(0, 3);
   }, [localMediaFiles]);
 
-  // Filtered files according to search, drive, and active tab
+  const sourcePathPrefix =
+    librarySource.kind === 'folder' ||
+    librarySource.kind === 'device' ||
+    librarySource.kind === 'share'
+      ? librarySource.pathPrefix
+      : null;
+
+  const sourceLabel =
+    librarySource.kind === 'folder' ||
+    librarySource.kind === 'device' ||
+    librarySource.kind === 'share'
+      ? librarySource.label
+      : null;
+
+  // Filtered files according to search, sidebar source, and active tab
   const filteredLocalFiles = useMemo(() => {
     let result =
       activeLibraryTab === 'played'
@@ -239,18 +265,21 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
           f.codec.toLowerCase().includes(q) ||
           f.resolution.toLowerCase().includes(q) ||
           f.audioTrack.toLowerCase().includes(q) ||
-          f.genres.some((g) => g.toLowerCase().includes(q))
+          f.genres.some((g) => g.toLowerCase().includes(q)) ||
+          f.path.toLowerCase().includes(q)
       );
     }
 
-    if (selectedDriveId) {
-      if (selectedDriveId === 'nvme-primary') {
-        result = result.filter((f) => f.path.startsWith('/mnt/nvme0n1'));
-      }
+    if (sourcePathPrefix) {
+      const prefix = sourcePathPrefix.toLowerCase();
+      result = result.filter((f) => {
+        const path = f.path.toLowerCase();
+        return path.startsWith(prefix) || path.includes(prefix);
+      });
     }
 
     return result;
-  }, [localMediaFiles, recentlyPlayedFiles, longestFiles, searchQuery, selectedDriveId, activeLibraryTab]);
+  }, [localMediaFiles, recentlyPlayedFiles, longestFiles, searchQuery, sourcePathPrefix, activeLibraryTab]);
 
   // All Peer Media combined or single selected peer
   const activePeer = useMemo(() => {
@@ -404,10 +433,22 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
             </div>
             <div>
               <h1 className="font-display font-extrabold text-2xl lg:text-3xl text-white tracking-wide">
-                Local Media Libraries
+                {sourceLabel
+                  ? sourceLabel
+                  : activePeer
+                    ? activePeer.name
+                    : librarySource.kind === 'peers-all'
+                      ? 'Shared Peer Libraries'
+                      : 'Local Media Libraries'}
               </h1>
               <p className="text-xs lg:text-sm text-zinc-400 mt-0.5">
-                Direct zero-transcode NVMe SSD storage, local network mounts, and peer mesh nodes.
+                {sourcePathPrefix
+                  ? `Showing files under ${sourcePathPrefix}`
+                  : librarySource.kind === 'peer' && activePeer
+                    ? `${activePeer.owner} · ${activePeer.media.length} titles`
+                    : librarySource.kind === 'peers-all'
+                      ? 'All connected peer mesh libraries'
+                      : 'Direct zero-transcode NVMe SSD storage, local network mounts, and peer mesh nodes.'}
               </p>
             </div>
           </div>
@@ -612,29 +653,8 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
           </button>
         </div>
 
-        {/* Search input & Grid / List View Toggle */}
+        {/* Grid / List View Toggle */}
         <div className="flex items-center gap-3">
-          {/* Quick Search Input */}
-          <div className="relative min-w-[220px] lg:min-w-[280px]">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter titles, codecs, audio..."
-              className="w-full pl-9 pr-8 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400 transition-all font-sans"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* View Mode Toggle */}
           <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/10">
             <button
               onClick={() => setViewMode('grid')}

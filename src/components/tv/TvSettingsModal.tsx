@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   X, 
   Settings, 
@@ -13,7 +13,6 @@ import {
   RotateCcw,
   Languages,
   Film,
-  HardDrive,
   Moon,
   Palette,
   Tv,
@@ -42,6 +41,11 @@ import {
   Clapperboard,
   BookOpen,
   Library,
+  Bluetooth,
+  BluetoothConnected,
+  Speaker,
+  Headphones,
+  Camera,
   type LucideIcon,
 } from 'lucide-react';
 import { apiFetch, clearApiToken, getApiToken, setApiToken } from '../../lib/apiAuth';
@@ -55,8 +59,6 @@ import {
 interface TvSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onToggleRemote?: () => void;
-  isRemoteOpen?: boolean;
   onOpenPlugins?: () => void;
   eqGains: {
     hz60: number;
@@ -77,8 +79,6 @@ export type SettingCategory =
   | 'remote'
   | 'audio-video' 
   | 'playback' 
-  | 'subtitles' 
-  | 'storage' 
   | 'network';
 
 interface PluginItem {
@@ -134,6 +134,7 @@ interface UserProfile {
   name: string;
   initials: string;
   color: string;
+  avatarUrl?: string | null;
   isKid: boolean;
   isPrimary?: boolean;
 }
@@ -141,8 +142,6 @@ interface UserProfile {
 export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   isOpen,
   onClose,
-  onToggleRemote,
-  isRemoteOpen = false,
   onOpenPlugins,
   eqGains,
   onEqChange,
@@ -161,6 +160,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [activeProfileId, setActiveProfileId] = useState<string>('1');
   const [editingName, setEditingName] = useState(false);
   const [profileNameInput, setProfileNameInput] = useState('Steven Azevedo');
+  const [profileAvatarDraft, setProfileAvatarDraft] = useState<string | null>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement>(null);
   const [maturityRating, setMaturityRating] = useState<'all' | 'pg13' | 'family'>('all');
   const [autoplayTrailers, setAutoplayTrailers] = useState(true);
   const [showContinueWatching, setShowContinueWatching] = useState(true);
@@ -258,9 +259,128 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   ]);
 
   // Audio / Video & Existing Preferences
-  const [ambilightMode, setAmbilightMode] = useState('vibrant');
   const [nightMode, setNightMode] = useState(false);
   const [audioPassthrough, setAudioPassthrough] = useState(true);
+
+  type BtDeviceKind = 'remote' | 'gamepad' | 'speaker' | 'headphones' | 'other';
+  type BtDeviceRow = {
+    id: string;
+    name: string;
+    kind: BtDeviceKind;
+    status: 'connected' | 'paired' | 'available';
+    detail: string;
+  };
+  const [btDevices, setBtDevices] = useState<BtDeviceRow[]>([]);
+  const [btScanning, setBtScanning] = useState(false);
+  const [btFeedback, setBtFeedback] = useState<string | null>(null);
+
+  const btSupported =
+    typeof navigator !== 'undefined' &&
+    !!(navigator as Navigator & { bluetooth?: unknown }).bluetooth;
+
+  const kindIcon = (kind: BtDeviceKind): LucideIcon => {
+    switch (kind) {
+      case 'remote':
+        return Tv;
+      case 'gamepad':
+        return Gamepad2;
+      case 'speaker':
+        return Speaker;
+      case 'headphones':
+        return Headphones;
+      default:
+        return Bluetooth;
+    }
+  };
+
+  const refreshGamepadDevices = () => {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    const pads = Array.from(navigator.getGamepads()).filter(Boolean) as Gamepad[];
+    setBtDevices((prev) => {
+      const withoutPads = prev.filter((d) => !d.id.startsWith('gamepad-'));
+      const fromPads: BtDeviceRow[] = pads.map((pad, idx) => ({
+        id: `gamepad-${pad.index}-${idx}`,
+        name: pad.id?.trim() || `Gamepad ${pad.index + 1}`,
+        kind: 'gamepad' as const,
+        status: 'connected' as const,
+        detail: `HID index ${pad.index} · ${pad.buttons?.length ?? 0} buttons`,
+      }));
+      return [...fromPads, ...withoutPads];
+    });
+  };
+
+  useEffect(() => {
+    refreshGamepadDevices();
+    const onConnect = () => refreshGamepadDevices();
+    const onDisconnect = () => refreshGamepadDevices();
+    window.addEventListener('gamepadconnected', onConnect);
+    window.addEventListener('gamepaddisconnected', onDisconnect);
+    return () => {
+      window.removeEventListener('gamepadconnected', onConnect);
+      window.removeEventListener('gamepaddisconnected', onDisconnect);
+    };
+  }, []);
+
+  const handleBluetoothScan = async () => {
+    setBtFeedback(null);
+    setBtScanning(true);
+    try {
+      refreshGamepadDevices();
+      const bluetooth = (navigator as Navigator & {
+        bluetooth?: {
+          requestDevice: (opts: {
+            acceptAllDevices?: boolean;
+            optionalServices?: string[];
+          }) => Promise<{ id: string; name?: string; gatt?: { connected?: boolean } }>;
+        };
+      }).bluetooth;
+
+      if (!bluetooth?.requestDevice) {
+        setBtFeedback(
+          'Web Bluetooth is not available in this browser. Plug in a USB gamepad or use a Chromium build with Bluetooth enabled.'
+        );
+        return;
+      }
+
+      const device = await bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['battery_service', 'device_information', 'generic_access'],
+      });
+      const name = device.name?.trim() || 'Bluetooth device';
+      const lower = name.toLowerCase();
+      let kind: BtDeviceKind = 'other';
+      if (/remote|fire tv|shield|roku|apple tv|chromecast/.test(lower)) kind = 'remote';
+      else if (/xbox|dualshock|dualsense|controller|gamepad|joy-con|switch/.test(lower)) kind = 'gamepad';
+      else if (/speaker|soundbar|boom|homepod|echo/.test(lower)) kind = 'speaker';
+      else if (/buds|headphone|airpods|headset|earbud/.test(lower)) kind = 'headphones';
+
+      setBtDevices((prev) => {
+        const next = prev.filter((d) => d.id !== device.id);
+        next.unshift({
+          id: device.id || `bt-${Date.now()}`,
+          name,
+          kind,
+          status: device.gatt?.connected ? 'connected' : 'paired',
+          detail: device.gatt?.connected ? 'GATT connected' : 'Paired via Web Bluetooth picker',
+        });
+        return next;
+      });
+      setBtFeedback(`Added “${name}”. Audio/speaker profiles may still need OS-level pairing.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/cancel|abort/i.test(msg)) {
+        setBtFeedback('Pairing cancelled.');
+      } else {
+        setBtFeedback(msg || 'Bluetooth pairing failed.');
+      }
+    } finally {
+      setBtScanning(false);
+    }
+  };
+
+  const removeBtDevice = (id: string) => {
+    setBtDevices((prev) => prev.filter((d) => d.id !== id));
+  };
 
   // Playback & Video
   const [autoPlayNext, setAutoPlayNext] = useState(true);
@@ -329,6 +449,38 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   if (!isOpen) return null;
 
   const currentProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+  const displayedAvatarUrl = editingName
+    ? profileAvatarDraft
+    : currentProfile.avatarUrl ?? null;
+
+  const beginProfileEdit = () => {
+    setProfileNameInput(currentProfile.name);
+    setProfileAvatarDraft(currentProfile.avatarUrl ?? null);
+    setEditingName(true);
+  };
+
+  const cancelProfileEdit = () => {
+    setEditingName(false);
+    setProfileAvatarDraft(currentProfile.avatarUrl ?? null);
+    if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = '';
+  };
+
+  const handleProfilePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setProfileFeedback('Photo must be under 4 MB.');
+      setTimeout(() => setProfileFeedback(null), 3000);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setProfileAvatarDraft(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSaveProfileName = () => {
     if (!profileNameInput.trim()) return;
@@ -340,17 +492,22 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               name: profileNameInput.trim(),
               initials: profileNameInput
                 .trim()
-                .split(' ')
+                .split(/\s+/)
                 .map((n) => n[0])
                 .join('')
                 .slice(0, 2)
                 .toUpperCase() || 'TV',
+              avatarUrl: profileAvatarDraft,
             }
           : p
       )
     );
     setEditingName(false);
-    setProfileFeedback('Profile name updated successfully.');
+    setProfileFeedback(
+      profileAvatarDraft !== (currentProfile.avatarUrl ?? null)
+        ? 'Profile name and photo updated.'
+        : 'Profile name updated successfully.'
+    );
     setTimeout(() => setProfileFeedback(null), 3000);
   };
 
@@ -468,11 +625,9 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
           <div className="w-64 border-r border-white/10 p-4 flex flex-col gap-1.5 bg-black/40 overflow-y-auto no-scrollbar">
             {[
               { id: 'profile', label: 'Profile & Account', icon: User },
-              { id: 'remote', label: 'TV Remote & D-Pad', icon: Gamepad2 },
+              { id: 'remote', label: 'Bluetooth Remote', icon: Bluetooth },
               { id: 'audio-video', label: 'Display & Sound', icon: Palette },
               { id: 'playback', label: 'Playback & Video', icon: Film },
-              { id: 'subtitles', label: 'Subtitles & Audio', icon: Languages },
-              { id: 'storage', label: 'Storage & Drives', icon: HardDrive },
               { id: 'network', label: 'Server & LAN', icon: Server },
               { id: 'plugins', label: 'Plugins & Addons', icon: Puzzle, count: pluginsList.filter(p => p.isInstalled && p.enabled).length },
             ].map((cat) => {
@@ -517,28 +672,95 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                 {/* Profile Banner Card */}
                 <div className="p-6 rounded-3xl bg-gradient-to-r from-sky-950/40 via-indigo-950/30 to-black/80 border border-sky-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
                   <div className="flex items-center gap-4">
-                    <div className={`w-16 h-16 rounded-2xl bg-gradient-to-tr ${currentProfile.color} flex items-center justify-center text-white font-extrabold text-2xl shadow-xl ring-2 ring-white/20`}>
-                      {currentProfile.initials}
+                    <input
+                      ref={profilePhotoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleProfilePhotoChange}
+                    />
+                    <div className="relative flex flex-col items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editingName) {
+                            profilePhotoInputRef.current?.click();
+                          } else {
+                            beginProfileEdit();
+                            // Open picker after edit mode mounts
+                            requestAnimationFrame(() => profilePhotoInputRef.current?.click());
+                          }
+                        }}
+                        className={`relative w-16 h-16 rounded-2xl bg-gradient-to-tr ${currentProfile.color} flex items-center justify-center text-white font-extrabold text-2xl shadow-xl ring-2 ring-white/20 overflow-hidden group focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer`}
+                        title={editingName ? 'Change profile photo' : 'Edit profile'}
+                        aria-label={editingName ? 'Change profile photo' : 'Edit profile'}
+                      >
+                        {displayedAvatarUrl ? (
+                          <img
+                            src={displayedAvatarUrl}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="relative z-0">{currentProfile.initials}</span>
+                        )}
+                        {editingName && (
+                          <span className="absolute inset-0 z-10 flex items-center justify-center bg-black/55 opacity-100 group-hover:bg-black/70 transition-colors">
+                            <Camera className="w-6 h-6 text-white drop-shadow" />
+                          </span>
+                        )}
+                      </button>
+                      {editingName && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => profilePhotoInputRef.current?.click()}
+                            className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
+                          >
+                            Change photo
+                          </button>
+                          {profileAvatarDraft && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProfileAvatarDraft(null);
+                                if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = '';
+                              }}
+                              className="text-[10px] text-zinc-400 hover:text-rose-300 font-semibold cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div>
                       {editingName ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <input
                             type="text"
                             value={profileNameInput}
                             onChange={(e) => setProfileNameInput(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSaveProfileName();
-                              if (e.key === 'Escape') setEditingName(false);
+                              if (e.key === 'Escape') cancelProfileEdit();
                             }}
                             autoFocus
                             className="px-3 py-1 bg-black/60 border border-sky-400 rounded-xl text-white font-bold text-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
                           />
                           <button
+                            type="button"
                             onClick={handleSaveProfileName}
-                            className="px-3 py-1 bg-sky-500 text-black text-xs font-bold rounded-xl hover:bg-sky-400 transition-colors"
+                            className="px-3 py-1 bg-sky-500 text-black text-xs font-bold rounded-xl hover:bg-sky-400 transition-colors cursor-pointer"
                           >
                             Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelProfileEdit}
+                            className="px-3 py-1 bg-white/10 text-zinc-300 hover:text-white text-xs font-semibold rounded-xl hover:bg-white/15 transition-colors cursor-pointer"
+                          >
+                            Cancel
                           </button>
                         </div>
                       ) : (
@@ -547,10 +769,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                             {currentProfile.name}
                           </h3>
                           <button
-                            onClick={() => {
-                              setProfileNameInput(currentProfile.name);
-                              setEditingName(true);
-                            }}
+                            type="button"
+                            onClick={beginProfileEdit}
                             className="text-xs text-sky-400 hover:text-sky-300 underline font-medium cursor-pointer"
                           >
                             Edit
@@ -558,9 +778,9 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                         </div>
                       )}
                       <div className="flex items-center gap-2.5 mt-1">
-                        <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[11px] font-semibold flex items-center gap-1">
-                          <ShieldCheck className="w-3 h-3 text-sky-400" />
-                          Nascent TV Plus · Active Member
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                          Nascent Premium · Active Member
                         </span>
                         {currentProfile.isKid && (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold">
@@ -1032,29 +1252,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </button>
                   </div>
                 </div>
-
-                {/* Ambilight Setting */}
-                <div className="pt-2 flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/10">
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">Ambilight Ambient Glow</h4>
-                    <span className="text-xs text-zinc-400">Dynamic lighting reflecting colors around the display</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {['off', 'subtle', 'vibrant'].map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setAmbilightMode(m)}
-                        className={`px-4 py-1.5 rounded-full text-xs uppercase font-bold transition-all ${
-                          ambilightMode === m
-                            ? 'bg-sky-500 text-black'
-                            : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                        }`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1151,12 +1348,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* 5. Subtitles & Audio Languages */}
-            {activeCategory === 'subtitles' && (
-              <div className="flex flex-col gap-5">
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Subtitles & Audio Language</h3>
                   <p className="text-xs text-zinc-400 mb-4">Typography, positioning, styling, and scraper settings.</p>
@@ -1241,8 +1433,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* Storage & Drives */}
-            {activeCategory === 'storage' && (
+            {/* Server & LAN (includes storage / cache) */}
+            {activeCategory === 'network' && (
               <div className="flex flex-col gap-5">
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Storage, Drives & Cache</h3>
@@ -1302,12 +1494,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* 8. Server & LAN */}
-            {activeCategory === 'network' && (
-              <div className="flex flex-col gap-5">
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Local Server & Network Diagnostics</h3>
                   <p className="text-xs text-zinc-400 mb-4">Built-in reverse proxy, port binding, DLNA, and LAN sync.</p>
@@ -1450,92 +1637,112 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 9. Virtual TV Remote Controller */}
+            {/* TV Remote & Bluetooth accessories */}
             {activeCategory === 'remote' && (
               <div className="flex flex-col gap-6">
                 <div>
-                  <h3 className="font-display font-bold text-lg text-white mb-1">Android TV Remote Controller</h3>
-                  <p className="text-xs text-zinc-400 mb-5">
-                    Navigate the interface using the virtual directional pad, media controls, and quick action shortcuts.
-                  </p>
-
-                  <div className="p-6 rounded-3xl bg-gradient-to-br from-sky-950/40 via-zinc-900/60 to-black/80 border border-sky-500/20 mb-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center shadow-lg">
-                        <Gamepad2 className="w-7 h-7" />
-                      </div>
-                      <div>
-                        <h4 className="text-base font-bold text-white mb-0.5">Virtual D-Pad Remote Overlay</h4>
-                        <p className="text-xs text-zinc-400">
-                          {isRemoteOpen 
-                            ? 'Virtual remote is currently active on screen.' 
-                            : 'Open floating Android TV remote for directional browsing & playback.'}
-                        </p>
-                      </div>
+                  <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
+                    <div>
+                      <h3 className="font-display font-bold text-lg text-white mb-1">
+                        Bluetooth Devices
+                      </h3>
+                      <p className="text-xs text-zinc-400">
+                        Pair TV remotes, game controllers, speakers, and headphones. Gamepads use the
+                        HID Gamepad API; other accessories use Web Bluetooth when the browser allows it.
+                      </p>
                     </div>
-
                     <button
-                      onClick={() => onToggleRemote?.()}
-                      className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-lg flex items-center gap-2 focus:ring-2 focus:ring-sky-400 focus:outline-none ${
-                        isRemoteOpen
-                          ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
-                          : 'bg-sky-500 hover:bg-sky-400 text-black shadow-sky-500/30'
-                      }`}
+                      type="button"
+                      onClick={() => void handleBluetoothScan()}
+                      disabled={btScanning}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-sky-500 hover:bg-sky-400 disabled:opacity-60 disabled:cursor-not-allowed text-black text-xs font-bold shadow-md shadow-sky-500/20 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400 shrink-0"
                     >
-                      <Gamepad2 className="w-4 h-4" />
-                      <span>{isRemoteOpen ? 'Close Remote Overlay' : 'Launch TV Remote'}</span>
+                      {btScanning ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Bluetooth className="w-3.5 h-3.5" />
+                      )}
+                      <span>{btScanning ? 'Scanning…' : 'Scan & Pair'}</span>
                     </button>
                   </div>
 
-                  {/* Remote Features & Mapping Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Remote Keyboard Shortcuts</h4>
-                      <div className="flex flex-col gap-2 text-xs">
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">D-Pad Up / Down</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">↑ / ↓ Scroll</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">D-Pad Left / Right</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">← / → Carousel</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Center OK / Select</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Enter / Space</kbd>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-300">Back / Return</span>
-                          <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-white/10">Esc / Backspace</kbd>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-                      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Controller Specs & Connectivity</h4>
-                      <div className="flex flex-col gap-2 text-xs">
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Profile Protocol</span>
-                          <span className="font-semibold text-zinc-200">Android TV D-Pad HID</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Haptic Feedback</span>
-                          <span className="font-semibold text-emerald-400">Enabled (Vibrate)</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1 border-b border-white/5">
-                          <span className="text-zinc-300">Repeat Delay</span>
-                          <span className="font-mono text-zinc-300">180 ms</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-300">Status</span>
-                          <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            Connected
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+                        btSupported
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                      }`}
+                    >
+                      <BluetoothConnected className="w-3 h-3" />
+                      {btSupported ? 'Web Bluetooth available' : 'Web Bluetooth unavailable'}
+                    </span>
+                    <span className="text-zinc-500">
+                      Remotes & speakers often require OS Bluetooth settings in addition to the browser picker.
+                    </span>
                   </div>
+
+                  {btFeedback && (
+                    <div className="mb-3 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-[11px] text-zinc-300">
+                      {btFeedback}
+                    </div>
+                  )}
+
+                  {btDevices.length === 0 ? (
+                    <div className="p-5 rounded-2xl bg-white/5 border border-dashed border-white/15 text-center">
+                      <Bluetooth className="w-6 h-6 text-zinc-500 mx-auto mb-2" />
+                      <p className="text-xs text-zinc-400">
+                        No Bluetooth or gamepad devices listed yet. Press Scan &amp; Pair, or connect a
+                        controller and it will appear automatically.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {btDevices.map((device) => {
+                        const Icon = kindIcon(device.kind);
+                        return (
+                          <div
+                            key={device.id}
+                            className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10"
+                          >
+                            <div className="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-400 border border-sky-500/30 flex items-center justify-center shrink-0">
+                              <Icon className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-white truncate">
+                                  {device.name}
+                                </span>
+                                <span className="text-[10px] uppercase tracking-wider font-bold text-zinc-400">
+                                  {device.kind}
+                                </span>
+                                <span
+                                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${
+                                    device.status === 'connected'
+                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                      : device.status === 'paired'
+                                        ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                                        : 'bg-white/5 text-zinc-400 border-white/10'
+                                  }`}
+                                >
+                                  {device.status}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-zinc-500 truncate">{device.detail}</p>
+                            </div>
+                            <button
+                              type="button"
+                              title="Remove from list"
+                              onClick={() => removeBtDevice(device.id)}
+                              className="px-3 py-1.5 rounded-full text-[11px] font-semibold text-zinc-400 hover:text-rose-300 hover:bg-rose-500/10 border border-white/10 cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -25,7 +25,7 @@ import { TvSettingsModal } from './components/tv/TvSettingsModal';
 import { TvPluginModal } from './components/tv/TvPluginModal';
 import { StreamingEngineHUD } from './components/StreamingEngineHUD';
 import { globalStreamingEngine } from './lib/streamingEngine';
-import { TvSidebar } from './components/tv/TvSidebar';
+import { TvSidebar, LibrarySourceSelection } from './components/tv/TvSidebar';
 import { TvLibrariesView } from './components/tv/TvLibrariesView';
 import { isTvSeries } from './lib/tvEpisodeData';
 import { apiFetch } from './lib/apiAuth';
@@ -212,6 +212,9 @@ export default function App() {
   // Left sidebar & Peer node state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null);
+  const [librarySource, setLibrarySource] = useState<LibrarySourceSelection>({
+    kind: 'local-all',
+  });
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [connectCodeInput, setConnectCodeInput] = useState('');
   const [connectStatusMsg, setConnectStatusMsg] = useState<string | null>(null);
@@ -783,13 +786,24 @@ export default function App() {
             activeTab={activeTab}
             onTabChange={(tab) => {
               setActiveTab(tab);
-              if (tab !== 'shared-libraries') setSelectedPeerId(null);
+              if (tab !== 'shared-libraries') {
+                setSelectedPeerId(null);
+                if (tab === 'local-media' || tab === 'library') {
+                  setLibrarySource((prev) =>
+                    prev.kind === 'peer' || prev.kind === 'peers-all'
+                      ? { kind: 'local-all' }
+                      : prev
+                  );
+                }
+              }
             }}
             selectedPeerId={selectedPeerId}
             onSelectPeer={(peerId) => {
               setSelectedPeerId(peerId);
               setActiveTab('shared-libraries');
             }}
+            librarySource={librarySource}
+            onSelectLibrarySource={setLibrarySource}
             peers={SHARED_PEER_LIBRARIES.map((p) => ({
               id: p.id,
               name: p.name,
@@ -806,6 +820,14 @@ export default function App() {
             onOpenConnectModal={() => setIsConnectModalOpen(true)}
             localFilesCount={LOCAL_MEDIA_FILES.length}
             onAddFolderSource={(folder) => {
+              setLibrarySource({
+                kind: 'folder',
+                id: folder.id,
+                pathPrefix: folder.path,
+                label: folder.name,
+              });
+              setSelectedPeerId(null);
+              setActiveTab('local-media');
               setScanFeedback(`Imported local system folder "${folder.name}" (${folder.path}) as active media source.`);
               setTimeout(() => setScanFeedback(null), 4500);
             }}
@@ -1036,11 +1058,14 @@ export default function App() {
             onOpenWatchParty={(movie) => setWatchPartyMovie(movie)}
             onRescan={handleLibraryRescan}
             selectedPeerId={selectedPeerId}
+            librarySource={librarySource}
             onSelectPeer={(peerId) => {
               setSelectedPeerId(peerId);
               if (peerId) {
+                setLibrarySource({ kind: 'peer', peerId });
                 setActiveTab('shared-libraries');
               } else {
+                setLibrarySource({ kind: 'local-all' });
                 setActiveTab('local-media');
               }
             }}
@@ -1236,8 +1261,6 @@ export default function App() {
       <TvSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onToggleRemote={() => setIsRemoteOpen((prev) => !prev)}
-        isRemoteOpen={isRemoteOpen}
         onOpenPlugins={() => setIsPluginModalOpen(true)}
         eqGains={eqGains}
         onEqChange={handleEqChange}
