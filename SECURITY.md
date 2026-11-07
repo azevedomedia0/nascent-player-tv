@@ -120,8 +120,12 @@ calls (`POST` / `DELETE` under `/api`) and the sensitive GET endpoints
 Use `x-api-token` when the built-in gateway is also enabled — browsers
 only send one `Authorization` header (Basic for the gateway).
 
-Mirror the same value as `VITE_NASCENT_API_TOKEN` so the SPA can attach
-`x-api-token` via `src/lib/apiAuth.ts`. Prefer gateway Basic auth for
+The browser app never reads this token from a build-time variable:
+do NOT set `VITE_NASCENT_API_TOKEN` — Vite inlines `VITE_*` values into
+the shipped JavaScript bundle, so the token would be readable by anyone
+who can load the app. Instead, paste the token once per browser session
+in Settings → Server & LAN → API Token; it is kept in `sessionStorage`
+for that tab only (`src/lib/apiAuth.ts`). Prefer gateway Basic auth for
 shared remote access; use the API token as a second layer or for scripts.
 
 ## Known limitations (not fixed here)

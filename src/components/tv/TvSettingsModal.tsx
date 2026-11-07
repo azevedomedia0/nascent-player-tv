@@ -36,7 +36,7 @@ import {
   AlertCircle,
   Globe
 } from 'lucide-react';
-import { apiFetch } from '../../lib/apiAuth';
+import { apiFetch, clearApiToken, getApiToken, setApiToken } from '../../lib/apiAuth';
 
 interface TvSettingsModalProps {
   isOpen: boolean;
@@ -272,6 +272,12 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   } | null>(null);
   const [proxyStatusError, setProxyStatusError] = useState<string | null>(null);
 
+  // API token (NASCENT_API_TOKEN) — entered by the user, kept in
+  // sessionStorage for this browser tab only. Never baked into the
+  // app bundle (see src/lib/apiAuth.ts).
+  const [apiTokenInput, setApiTokenInput] = useState<string>(() => getApiToken());
+  const [apiTokenSaved, setApiTokenSaved] = useState<boolean>(() => getApiToken().length > 0);
+
   useEffect(() => {
     if (!isOpen || activeCategory !== 'network') return;
     let cancelled = false;
@@ -466,11 +472,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     <Icon className="w-4 h-4 flex-shrink-0" />
                     <span>{cat.label}</span>
                   </div>
-                  {cat.badge && (
-                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-sky-400'}`}>
-                      {cat.badge}
-                    </span>
-                  )}
                   {typeof cat.count === 'number' && (
                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-zinc-400'}`}>
                       {cat.count}
@@ -1303,6 +1304,50 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                       </>
                     ) : (
                       <p className="text-xs text-zinc-500">Loading proxy status…</p>
+                    )}
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3 mb-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">API Token</h4>
+                      <p className="text-xs text-zinc-400">
+                        Required only when the server sets <span className="font-mono">NASCENT_API_TOKEN</span>. Paste it here once per browser session — it is kept in this tab only and is never shipped in the app.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        value={apiTokenInput}
+                        onChange={(e) => {
+                          setApiTokenInput(e.target.value);
+                          setApiTokenSaved(false);
+                        }}
+                        placeholder={apiTokenSaved ? 'Token saved for this session' : 'Paste API token…'}
+                        autoComplete="off"
+                        className="flex-1 px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-sm text-white placeholder-white/30 focus:outline-none focus:border-sky-500 font-mono"
+                      />
+                      <button
+                        onClick={() => {
+                          setApiToken(apiTokenInput);
+                          setApiTokenSaved(apiTokenInput.trim().length > 0);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => {
+                          clearApiToken();
+                          setApiTokenInput('');
+                          setApiTokenSaved(false);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold transition"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {apiTokenSaved && (
+                      <p className="text-xs text-emerald-400">Token saved for this browser session.</p>
                     )}
                   </div>
 
