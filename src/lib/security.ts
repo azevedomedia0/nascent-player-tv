@@ -1,10 +1,10 @@
 /**
  * Shared server-side security helpers.
  *
- * Pure functions only — no Express, SvelteKit, or framework imports — so
- * both `server.ts` (Express, the live backend) and
- * `src/routes/api/[...path]/+server.ts` (the SvelteKit duplicate) can use
- * the same validation. If a check changes here, it changes everywhere.
+ * Pure functions only — no Express or framework imports — so they can be
+ * reused by any backend that needs them. If a check changes here, it
+ * changes everywhere. (Previously also used by the SvelteKit duplicate
+ * API route, removed in the dead-code cleanup of 2026-11-06.)
  *
  * Threat model: this is a local media server. It is safe on localhost.
  * It is NOT safe to expose directly to the internet without a reverse

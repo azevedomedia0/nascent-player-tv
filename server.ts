@@ -6,6 +6,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import {
@@ -55,7 +56,8 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
     req.path.startsWith("/api/metadata/enrich") ||
     req.path.startsWith("/api/upload") ||
     req.path.startsWith("/api/stream/benchmark") ||
-    req.path.startsWith("/api/stremio/torrent/stream");
+    req.path.startsWith("/api/stremio/torrent/stream") ||
+    req.path.startsWith("/api/waku/");
   const limit = sensitive ? 20 : 120;
   const key = `${req.ip || "unknown"}:${sensitive ? "sensitive" : "api"}`;
   const now = Date.now();
@@ -221,7 +223,7 @@ const defaultPlugins = [
     version: "0.0.14",
     author: "Torrentio Community",
     type: "stremio",
-    enabled: true,
+    enabled: false,
     manifestUrl: "https://torrentio.strem.fun/providers=yts,eztv,rarbg,1337x,torrent9,kickass/manifest.json",
     code: `{
   "id": "org.stremio.torrentio",
@@ -295,7 +297,7 @@ if (!fs.existsSync(PLUGINS_FILE)) {
       version: "0.0.14",
       author: "Torrentio Community",
       type: "stremio",
-      enabled: true,
+      enabled: false,
       manifestUrl: "https://torrentio.strem.fun/providers=yts,eztv,rarbg,1337x,torrent9,kickass/manifest.json",
       code: `{
   "id": "org.stremio.torrentio",
@@ -958,30 +960,53 @@ Invite your friends to watch this together by clicking generating watch party lo
 });
 
 // 7. Watch Party Synchronization Rooms Endpoints
+//
+// SECURITY: host authority used to be client-asserted — any caller
+// could send `isHost: true` (or claim the host's `hostId`) and hijack
+// playback for the whole room. Now the server issues a random
+// `hostToken` at creation, returned ONLY to the creator. Only a sync
+// request presenting that token may change playback state. The token
+// is never included in join/sync/chat responses (see publicRoom()).
+// `hostId`/`hostName` are display identity only, never authority.
+// NOTE: no live client calls these endpoints yet (TvWatchParty is a
+// mocked UI), so this changes the API contract, not app behaviour.
+function publicRoom(room: any) {
+  const { hostToken, ...publicFields } = room;
+  return publicFields;
+}
+
+function asDisplayName(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim()) return value.trim().slice(0, 50);
+  return fallback;
+}
+
 app.post("/api/watchparty/create", (req, res) => {
   const { hostName, hostId, currentMediaId } = req.body;
   const roomId = "room_" + Math.random().toString(36).substr(2, 6).toUpperCase();
+  const hostToken = crypto.randomBytes(32).toString("hex");
 
   watchParties[roomId] = {
     roomId,
-    hostId,
-    hostName,
-    currentMediaId: currentMediaId || null,
+    hostId: typeof hostId === "string" ? hostId.slice(0, 100) : "host_" + Math.random().toString(36).substr(2, 9),
+    hostName: asDisplayName(hostName, "Host"),
+    hostToken,
+    currentMediaId: typeof currentMediaId === "string" ? currentMediaId.slice(0, 200) : null,
     playbackState: "paused",
     currentTime: 0,
     lastSyncTime: Date.now(),
-    participants: [{ id: hostId, name: hostName, lastSeen: Date.now() }],
+    participants: [{ id: typeof hostId === "string" ? hostId.slice(0, 100) : "host", name: asDisplayName(hostName, "Host"), lastSeen: Date.now() }],
     chat: [
       {
         id: "msg_init",
         userName: "Media Room BOT",
-        text: `Welcome, ${hostName}! Room created successfully. Send sharing link to friends to watch synchronized stream!`,
+        text: `Welcome, ${asDisplayName(hostName, "Host")}! Room created successfully. Send sharing link to friends to watch synchronized stream!`,
         timestamp: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
       }
     ]
   };
 
-  res.status(201).json(watchParties[roomId]);
+  // Only the creator ever sees the host token.
+  res.status(201).json({ ...watchParties[roomId], hostToken });
 });
 
 // Join exist Room
@@ -992,60 +1017,72 @@ app.post("/api/watchparty/join", (req, res) => {
     return res.status(404).json({ error: "Lobby not found. Double check room code." });
   }
 
+  const safeUserId = typeof userId === "string" && userId.trim() ? userId.trim().slice(0, 100) : "user_" + Math.random().toString(36).substr(2, 9);
+  const safeUserName = asDisplayName(userName, "Watcher");
+
   // Add participant
-  const exists = room.participants.some((p: any) => p.id === userId);
+  const exists = room.participants.some((p: any) => p.id === safeUserId);
   if (!exists) {
-    room.participants.push({ id: userId, name: userName, lastSeen: Date.now() });
+    room.participants.push({ id: safeUserId, name: safeUserName, lastSeen: Date.now() });
     room.chat.push({
       id: "join_" + Date.now(),
       userName: "System",
-      text: `${userName} entered the watch party lobby! 👋`,
+      text: `${safeUserName} entered the watch party lobby! 👋`,
       timestamp: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
     });
   } else {
     // update seen
-    const p = room.participants.find((x: any) => x.id === userId);
+    const p = room.participants.find((x: any) => x.id === safeUserId);
     if (p) {
       p.lastSeen = Date.now();
     }
   }
 
-  res.json(room);
+  res.json(publicRoom(room));
 });
 
 // Polling and syncing playback state
 app.post("/api/watchparty/:roomId/sync", (req, res) => {
   const { roomId } = req.params;
-  const { userId, playbackState, currentTime, currentMediaId, isHost } = req.body;
+  const { userId, playbackState, currentTime, currentMediaId, hostToken } = req.body;
   const room = watchParties[roomId];
 
   if (!room) {
     return res.status(404).json({ error: "Room not found" });
   }
 
+  const safeUserId = typeof userId === "string" && userId.trim() ? userId.trim().slice(0, 100) : "user_" + Math.random().toString(36).substr(2, 9);
+
   // Update participant lastseen
-  const member = room.participants.find((p: any) => p.id === userId);
+  const member = room.participants.find((p: any) => p.id === safeUserId);
   if (member) {
     member.lastSeen = Date.now();
   } else {
     // Join guest on the fly
-    room.participants.push({ id: userId, name: req.body.userName || "Watcher", lastSeen: Date.now() });
+    room.participants.push({ id: safeUserId, name: asDisplayName(req.body.userName, "Watcher"), lastSeen: Date.now() });
   }
 
   // Cleanup inactive members (not seen in > 15 seconds)
   room.participants = room.participants.filter((p: any) => Date.now() - p.lastSeen < 15000);
 
-  // Sync state if sender is the host
-  if (isHost || room.hostId === userId) {
-    room.playbackState = playbackState;
-    room.currentTime = currentTime;
-    if (currentMediaId !== undefined) {
-      room.currentMediaId = currentMediaId;
+  // Sync state ONLY if the caller presents the server-issued host
+  // token. The old `isHost` flag and `hostId` match are gone — both
+  // were entirely client-controlled.
+  const isHost = typeof hostToken === "string" && hostToken.length > 0 && hostToken === room.hostToken;
+  if (isHost) {
+    if (playbackState === "playing" || playbackState === "paused") {
+      room.playbackState = playbackState;
+    }
+    if (typeof currentTime === "number" && Number.isFinite(currentTime) && currentTime >= 0) {
+      room.currentTime = currentTime;
+    }
+    if (typeof currentMediaId === "string") {
+      room.currentMediaId = currentMediaId.slice(0, 200);
     }
     room.lastSyncTime = Date.now();
   }
 
-  res.json(room);
+  res.json(publicRoom(room));
 });
 
 // Add chats to WATCH PARTY
@@ -1057,11 +1094,14 @@ app.post("/api/watchparty/:roomId/chat", (req, res) => {
   if (!room) {
     return res.status(404).json({ error: "Room not found" });
   }
+  if (typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "Message text is required" });
+  }
 
   const newMessage = {
     id: "msg_" + Math.random().toString(36).substr(2, 9),
-    userName,
-    text,
+    userName: asDisplayName(userName, "Watcher"),
+    text: text.trim().slice(0, 500),
     timestamp: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
   };
 
@@ -1465,12 +1505,22 @@ app.get("/api/waku/v2/relay/v1/messages/:contentTopic", (req, res) => {
 });
 
 // Waku Relay POST Message (Publish via Relay / LightPush)
+// SECURITY: this was an unauthenticated, uncapped spam relay — any
+// payload of any size was stored and broadcast to all SSE clients.
+// Now: payloads are capped at 64 KB, topics at 200 chars, and the
+// endpoint is rate-limited (20/min/IP, see the rate limiter above).
 app.post("/api/waku/v2/relay/v1/messages/:contentTopic", (req, res) => {
   const contentTopic = decodeURIComponent(req.params.contentTopic);
   const wireMsg = req.body as WakuStoredMessage;
 
   if (!wireMsg || !wireMsg.payload) {
     return res.status(400).json({ error: "Invalid Waku message body: payload required" });
+  }
+  if (typeof wireMsg.payload !== "string" || wireMsg.payload.length > 65536) {
+    return res.status(413).json({ error: "Waku payload exceeds the 64 KB limit" });
+  }
+  if (contentTopic.length > 200) {
+    return res.status(400).json({ error: "contentTopic is too long" });
   }
 
   const normalizedMsg: WakuStoredMessage = {
@@ -1514,11 +1564,12 @@ app.post("/api/waku/v2/store/v1/messages", (req, res) => {
   }
 
   const messages = wakuMessageStore[contentTopic] || [];
-  const paged = messages.slice(-pageSize);
+  const safePageSize = Math.max(1, Math.min(100, Number(pageSize) || 50));
+  const paged = messages.slice(-safePageSize);
   res.json({
     messages: paged,
     pagination: {
-      pageSize,
+      pageSize: safePageSize,
       totalCount: messages.length
     }
   });

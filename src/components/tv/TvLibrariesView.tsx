@@ -31,7 +31,7 @@ import {
   Radio,
   Share2
 } from 'lucide-react';
-import { FeaturedMovie } from './TvHeroBillboard';
+import { FeaturedMovie } from '../../lib/types';
 import { LocalMediaFileItem, SharedPeerLibrary } from '../../lib/tvMediaData';
 
 export interface StorageDrive {

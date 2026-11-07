@@ -22,8 +22,7 @@ import {
   Settings,
   Music
 } from 'lucide-react';
-import { FeaturedMovie } from './TvHeroBillboard';
-import { SubtitleTrack } from '../../types';
+import { FeaturedMovie, SubtitleTrack } from '../../lib/types';
 
 interface TvPlayerProps {
   movie: FeaturedMovie;

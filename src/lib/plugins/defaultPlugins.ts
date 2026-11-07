@@ -83,18 +83,11 @@ export const DEFAULT_COMMUNITY_ADDONS: InstalledAddon[] = [
               { label: 'Smallest File Size', value: 'size' }
             ]
           },
-          {
-            key: 'debridApiKey',
-            label: 'Real-Debrid / AllDebrid API Token',
-            type: 'password',
-            default: '',
-            description: 'Optional API token for instant zero-p2p cached direct streaming'
-          }
         ]
       }
     },
     transportUrl: 'https://torrentio.strem.fun/manifest.json',
-    enabled: true,
+    enabled: false,
     installedAt: '2025-01-01T00:00:00.000Z',
     isBuiltIn: true,
     healthStatus: 'healthy',

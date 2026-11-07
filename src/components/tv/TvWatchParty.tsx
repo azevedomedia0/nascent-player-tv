@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Users, Play, Copy, Check, Radio, MessageSquare, Send, Sparkles, Smile, Flame, Heart } from 'lucide-react';
-import { FeaturedMovie } from './TvHeroBillboard';
+import { FeaturedMovie } from '../../lib/types';
 
 interface TvWatchPartyProps {
   movie: FeaturedMovie;

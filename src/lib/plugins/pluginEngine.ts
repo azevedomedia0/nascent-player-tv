@@ -24,6 +24,15 @@ export class PluginEngine {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as InstalledAddon[];
+        // SECURITY: strip any previously stored Debrid API token. The
+        // debridApiKey setting was removed — tokens must not be stored
+        // in plaintext localStorage or sent in addon URLs. Dropping it
+        // here migrates existing browsers on next load.
+        for (const addon of parsed) {
+          if (addon.userSettings && "debridApiKey" in addon.userSettings) {
+            delete (addon.userSettings as Record<string, unknown>).debridApiKey;
+          }
+        }
         // Merge with any missing essential default addons if not present
         const defaultIds = new Set(parsed.map(a => a.manifest.id));
         const merged = [...parsed];
@@ -89,11 +98,14 @@ export class PluginEngine {
   }
 
   public updateAddonSettings(id: string, settings: Record<string, any>): void {
+    // SECURITY: never accept a Debrid API token here — see loadAddons().
+    const { debridApiKey: _dropped, ...safeSettings } = settings;
+    void _dropped;
     this.addons = this.addons.map(addon => {
       if (addon.manifest.id === id) {
-        return { 
-          ...addon, 
-          userSettings: { ...(addon.userSettings || {}), ...settings } 
+        return {
+          ...addon,
+          userSettings: { ...(addon.userSettings || {}), ...safeSettings }
         };
       }
       return addon;

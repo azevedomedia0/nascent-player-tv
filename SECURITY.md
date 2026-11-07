@@ -13,9 +13,10 @@ Cloudflare Tunnel, Tailscale, etc.) that adds authentication, and set
 
 ## What is protected (fixed 2026-11-06)
 
-All of these apply to both backends — `server.ts` (Express, live) and
-`src/routes/api/[...path]/+server.ts` (SvelteKit, currently unused) —
-via the shared helpers in `src/lib/security.ts`:
+All of these apply to the Express backend in `server.ts`, via the
+shared helpers in `src/lib/security.ts`. (The SvelteKit duplicate API
+route that used to carry the same flaws was deleted in the dead-code
+cleanup of 2026-11-06, so there is now a single backend to patch.)
 
 - **Localhost by default.** The server binds `127.0.0.1:3000` unless
   `HOST` is set. Binding `0.0.0.0` prints a warning at startup.
@@ -46,9 +47,47 @@ via the shared helpers in `src/lib/security.ts`:
   (was uncapped `Buffer.alloc()` — 1 GB per request).
 - **Rate limiting and headers.** In-memory per-IP limiting on `/api`
   (120 req/min general, 20 req/min for proxy / enrich / upload /
-  benchmark / torrent-stream), plus `X-Content-Type-Options`,
+  benchmark / torrent-stream / Waku), plus `X-Content-Type-Options`,
   `X-Frame-Options`, and `Referrer-Policy` headers. JSON bodies are
   capped at 1 MB (was 50 MB).
+
+## Fixed in the 2026-11-06 follow-up
+
+- **Watch-party host takeover — fixed.** Playback sync used to trust
+  a client-sent `isHost` flag (or a client-chosen `hostId`). The
+  server now issues a random 32-byte `hostToken` at room creation,
+  returned only to the creator; only a sync request presenting that
+  token may change playback state, and the token is stripped from
+  join/sync/chat responses. `hostId`/`hostName` are display identity
+  only. Chat messages are capped at 500 chars, names at 50. No live
+  client calls these endpoints yet (the watch-party UI is mocked),
+  so this changes the API contract, not app behaviour.
+- **Waku open relay — capped.** `/api/waku/v2/relay/v1/messages` was
+  an unauthenticated, uncapped spam relay that stored and broadcast
+  any payload. Payloads are now capped at 64 KB, topics at 200 chars,
+  store queries at 100 messages, and the endpoint is rate-limited
+  (20 req/min/IP).
+- **Debrid tokens — removed.** The Real-Debrid/AllDebrid token field
+  was removed from the Torrentio addon settings, the plugin docs no
+  longer suggest putting API keys in addon URLs, and the plugin
+  engine strips any previously stored `debridApiKey` from
+  `localStorage` on load and refuses to save a new one. Do not enter
+  a Debrid token in this app.
+- **Client-side paywall — removed.** The "Community Addons" paywall
+  (`localStorage` flag, hardcoded voucher codes like `VIP-PASS`) is
+  gone: `addonPaywall.ts` and `TvAddonPaywallModal.tsx` were deleted
+  and the lock gates in the stream selector, plugin modal, and
+  sidebar were removed. Community addons are no longer locked behind
+  a fake purchase. There is no payment backend; if a real paywall is
+  ever wanted it must be server-verified.
+- **Torrentio no longer pre-enabled.** The Torrentio addon now ships
+  disabled by default (server defaults and the bundled addon list).
+  Existing installs keep their current setting; enable it explicitly
+  in the plugin modal if you want it.
+- **Runtime data no longer tracked.** `data/*.json` and `media/` are
+  now gitignored and the sample data files were removed from the
+  repo. The server recreates them from its built-in defaults on
+  startup, so a fresh clone still starts with the sample library.
 
 ## Optional token auth
 
@@ -64,22 +103,18 @@ reverse-proxy auth, not as a drop-in for the browser UI.
 
 ## Known limitations (not fixed here)
 
-- **No real authentication or per-user sessions.** Watch-party host
-  status is still client-asserted (`isHost` in the request body), and
-  the Waku chat endpoint accepts any message. Do not rely on these for
-  access control.
-- **Debrid tokens** are stored in plaintext `localStorage` and the
-  plugin docs suggest putting API keys in addon URLs. Move them to a
-  server-side secret store before entering a real token.
-- **The paywall is client-side only** (`localStorage` flag, hardcoded
-  voucher codes) and is trivially bypassed. It gates no payment.
+- **No real authentication or per-user sessions.** The API is open to
+  anyone who can reach the server — that is why localhost binding is
+  the primary control. The watch-party host token is a per-room
+  secret, not a user identity, and the Waku endpoint still accepts
+  messages from anyone (now size-capped and rate-limited). Do not
+  rely on these for access control.
 - **Plugin/addon hosts are trusted once allowlisted.** A malicious
   addon can serve arbitrary stream URLs and metadata to the player.
-  Only allowlist hosts you trust, and do not pre-enable Torrentio
-  (a torrent aggregator) if that matters for your deployment.
-- **Data files are tracked in git** (`data/*.json`) and `media/`
-  uploads are not ignored. Do not commit real watch history or
-  uploaded files.
+  Only allowlist hosts you trust.
+- **Gemini API key is server-side only**, but `POST
+  /api/metadata/enrich` lets any local caller spend the key's quota
+  (rate-limited to 20 req/min/IP). Keep the server on localhost.
 
 ## Reporting a vulnerability
 
