@@ -17,12 +17,12 @@ export const TvWatchParty: React.FC<TvWatchPartyProps> = ({
   const [copied, setCopied] = useState(false);
   const [participants, setParticipants] = useState([
     { id: '1', name: 'Steven_HQ (Host)', avatar: 'SA', status: 'Ready' },
-    { id: '2', name: 'Sophia_Streams', avatar: 'SS', status: 'Ready' },
-    { id: '3', name: 'Retro_Jack', avatar: 'RJ', status: 'Syncing' },
+    { id: '2', name: 'Guest_A', avatar: 'GA', status: 'Ready' },
+    { id: '3', name: 'Guest_B', avatar: 'GB', status: 'Syncing' },
   ]);
   const [messages, setMessages] = useState([
-    { id: '1', sender: 'Sophia_Streams', text: 'Ready for 4K Atmos! Soundbar is set.', time: 'Just now' },
-    { id: '2', sender: 'Retro_Jack', text: 'Connecting from living room Shield TV.', time: '1m ago' },
+    { id: '1', sender: 'Guest_A', text: 'Ready for 4K Atmos! Soundbar is set.', time: 'Just now' },
+    { id: '2', sender: 'Guest_B', text: 'Connecting from living room Shield TV.', time: '1m ago' },
   ]);
   const [newMsg, setNewMsg] = useState('');
   const [floatingEmojis, setFloatingEmojis] = useState<{ id: number; emoji: string; left: number }[]>([]);

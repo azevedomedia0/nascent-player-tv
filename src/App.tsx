@@ -23,6 +23,7 @@ import { TvSearchModal, UserCustomList } from './components/tv/TvSearchModal';
 import { TvWatchParty } from './components/tv/TvWatchParty';
 import { TvSettingsModal } from './components/tv/TvSettingsModal';
 import { TvPluginModal } from './components/tv/TvPluginModal';
+import { TvWakuChat } from './components/tv/TvWakuChat';
 import { StreamingEngineHUD } from './components/StreamingEngineHUD';
 import { globalStreamingEngine } from './lib/streamingEngine';
 import { TvSidebar } from './components/tv/TvSidebar';
@@ -328,6 +329,7 @@ export default function App() {
   const [isVoiceSearchRequested, setIsVoiceSearchRequested] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPluginModalOpen, setIsPluginModalOpen] = useState(false);
+  const [isWakuChatOpen, setIsWakuChatOpen] = useState(false);
   const [isRemoteOpen, setIsRemoteOpen] = useState(false);
   const [isStreamingHUDOpen, setIsStreamingHUDOpen] = useState(false);
   const [streamSelectorMovie, setStreamSelectorMovie] = useState<FeaturedMovie | null>(null);
@@ -494,6 +496,8 @@ export default function App() {
         } else if (isSearchOpen) {
           setIsSearchOpen(false);
           setIsVoiceSearchRequested(false);
+        } else if (isWakuChatOpen) {
+          setIsWakuChatOpen(false);
         } else if (isSettingsOpen) {
           setIsSettingsOpen(false);
         } else if (isPluginModalOpen) {
@@ -521,7 +525,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activePlayerMovie, inspectedMovie, watchPartyMovie, isSearchOpen, isSettingsOpen, isPluginModalOpen, currentFeatured, currentFeaturedShow, activeTab, isSidebarCollapsed, pureMoviesList.length, pureShowsList.length, moviesList.length]);
+  }, [activePlayerMovie, inspectedMovie, watchPartyMovie, isSearchOpen, isSettingsOpen, isPluginModalOpen, isWakuChatOpen, currentFeatured, currentFeaturedShow, activeTab, isSidebarCollapsed, pureMoviesList.length, pureShowsList.length, moviesList.length]);
 
   // Gamepad Controller Polling (Nvidia Shield, Android TV Gamepads, Xbox, PS, Steam Deck & KDE Plasma Bigscreen)
   useEffect(() => {
@@ -1123,6 +1127,7 @@ export default function App() {
         onToggleRemote={() => setIsRemoteOpen((prev) => !prev)}
         isRemoteOpen={isRemoteOpen}
         onOpenPlugins={() => setIsPluginModalOpen(true)}
+        onOpenWakuChat={() => setIsWakuChatOpen(true)}
         eqGains={eqGains}
         onEqChange={handleEqChange}
         audioPreset={audioPreset}
@@ -1133,6 +1138,11 @@ export default function App() {
       <TvPluginModal
         isOpen={isPluginModalOpen}
         onClose={() => setIsPluginModalOpen(false)}
+      />
+
+      <TvWakuChat
+        isOpen={isWakuChatOpen}
+        onClose={() => setIsWakuChatOpen(false)}
       />
 
       {/* STREAMING ENGINE HUD MODAL */}
