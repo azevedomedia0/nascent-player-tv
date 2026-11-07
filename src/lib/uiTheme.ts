@@ -3,7 +3,7 @@
  * `data-theme` on <html> so body / .nascent-app-bg pick up CSS vars.
  */
 
-export type UiThemeId = 'aurora' | 'midnight' | 'cinema' | 'ocean' | 'mono';
+export type UiThemeId = 'aurora' | 'midnight' | 'cinema' | 'ocean' | 'night';
 
 export type UiTheme = {
   id: UiThemeId;
@@ -39,10 +39,10 @@ export const UI_THEMES: UiTheme[] = [
     swatches: ['#2dd4bf', '#0e7490', '#115e59'],
   },
   {
-    id: 'mono',
-    label: 'Mono',
-    description: 'Deep charcoal grays with muted silver accents',
-    swatches: ['#737373', '#27272a', '#0a0a0b'],
+    id: 'night',
+    label: 'Night',
+    description: 'True dark mode with soft moonlight accents',
+    swatches: ['#94a3b8', '#1e293b', '#020617'],
   },
 ];
 

@@ -666,7 +666,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                 title={`${localMediaFiles.length} local master files`}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   activeLibraryTab === 'masters' && !selectedPeerId
-                    ? 'theme-segment-active font-bold shadow-md'
+                    ? 'bg-sky-500 text-black font-bold shadow-md shadow-sky-500/25'
                     : 'theme-segment-idle'
                 }`}
               >

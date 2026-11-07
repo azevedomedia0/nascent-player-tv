@@ -1038,7 +1038,7 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
 
             <button
               onClick={() => setIsCreatingList(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-white hover:bg-zinc-200 text-black font-bold text-xs tracking-wide shadow-lg shadow-black/50 active:scale-95 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-violet-300 hover:bg-violet-200 text-violet-950 font-bold text-xs tracking-wide shadow-lg shadow-black/50 active:scale-95 transition-all cursor-pointer"
             >
               <FolderPlus className="w-4 h-4" />
               <span>Create New List</span>

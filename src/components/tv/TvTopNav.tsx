@@ -215,34 +215,38 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
                     </span>
                   )}
                 </div>
-                {unreadCount > 0 && (
+                {notifications.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
+                    onClick={() => setNotifications([])}
                     className="text-[10px] text-sky-400 hover:text-sky-300 font-medium cursor-pointer"
                   >
-                    Mark read
+                    Clear Messages
                   </button>
                 )}
               </div>
 
               <div className="space-y-2 max-h-64 overflow-y-auto no-scrollbar">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${
-                      n.read
-                        ? 'bg-white/[0.03] border-white/5 opacity-75'
-                        : 'bg-white/[0.08] border-white/15'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-white line-clamp-1">{n.title}</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">{n.time}</span>
+                {notifications.length === 0 ? (
+                  <p className="py-6 text-center text-[11px] text-zinc-500">No messages</p>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        n.read
+                          ? 'bg-white/[0.03] border-white/5 opacity-75'
+                          : 'bg-white/[0.08] border-white/15'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-white line-clamp-1">{n.title}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">{n.time}</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-snug line-clamp-2">{n.message}</p>
                     </div>
-                    <p className="text-[11px] text-zinc-300 leading-snug line-clamp-2">{n.message}</p>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           )}
