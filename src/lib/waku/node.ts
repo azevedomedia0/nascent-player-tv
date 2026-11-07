@@ -2,18 +2,15 @@
  * Embedded Waku Light Node for the Express server.
  * Uses @waku/sdk (LightPush / Filter / Store). Failures must never
  * take down the rest of the app — callers check isAvailable().
+ *
+ * IMPORTANT: @waku/sdk / @waku/utils are ESM-only. The production
+ * server is bundled as CommonJS with packages external, so a static
+ * `require("@waku/sdk")` crashes Node on boot. SDK modules are loaded
+ * only via dynamic `import()` inside start(); a load/start failure
+ * leaves the service offline (endpoints 503) without killing the process.
  */
 
-import {
-  DefaultNetworkConfig,
-  Protocols,
-  createDecoder,
-  createEncoder,
-  createLightNode,
-  type IDecodedMessage,
-  type LightNode,
-} from "@waku/sdk";
-import { createRoutingInfo } from "@waku/utils";
+import type { IDecodedMessage, LightNode } from "@waku/sdk";
 
 export type WakuWireMessage = {
   payload: string; // Base64
@@ -51,17 +48,8 @@ const DEFAULT_TOPICS = [
 ];
 
 type MessageListener = (msg: WakuWireMessage) => void;
-
-function networkConfig(clusterId: number) {
-  return {
-    clusterId,
-    numShardsInCluster: DefaultNetworkConfig.numShardsInCluster,
-  };
-}
-
-function routingFor(contentTopic: string, clusterId: number) {
-  return createRoutingInfo(networkConfig(clusterId), { contentTopic });
-}
+type WakuSdk = typeof import("@waku/sdk");
+type WakuUtils = typeof import("@waku/utils");
 
 function b64ToBytes(b64: string): Uint8Array {
   return Uint8Array.from(Buffer.from(b64, "base64"));
@@ -90,6 +78,8 @@ function decodedToWire(msg: IDecodedMessage, fallbackTopic: string): WakuWireMes
 
 export class WakuNodeService {
   private node: LightNode | null = null;
+  private sdk: WakuSdk | null = null;
+  private utils: WakuUtils | null = null;
   private cache: Record<string, WakuWireMessage[]> = {};
   private listeners = new Set<MessageListener>();
   private subscribed = new Set<string>();
@@ -98,7 +88,7 @@ export class WakuNodeService {
   private clusterId = 1;
 
   isAvailable(): boolean {
-    return Boolean(this.node?.isStarted());
+    return Boolean(this.node?.isStarted() && this.sdk && this.utils);
   }
 
   onMessage(listener: MessageListener): () => void {
@@ -134,12 +124,39 @@ export class WakuNodeService {
     return [...(this.cache[contentTopic] || [])];
   }
 
+  /** Lazy-load ESM-only SDK packages. Safe to call from CJS runtime. */
+  private async loadSdk(): Promise<{ sdk: WakuSdk; utils: WakuUtils }> {
+    if (this.sdk && this.utils) {
+      return { sdk: this.sdk, utils: this.utils };
+    }
+    const [sdk, utils] = await Promise.all([
+      import("@waku/sdk"),
+      import("@waku/utils"),
+    ]);
+    this.sdk = sdk;
+    this.utils = utils;
+    return { sdk, utils };
+  }
+
+  private networkConfig(clusterId: number, sdk: WakuSdk) {
+    return {
+      clusterId,
+      numShardsInCluster: sdk.DefaultNetworkConfig.numShardsInCluster,
+    };
+  }
+
+  private routingFor(contentTopic: string, clusterId: number, sdk: WakuSdk, utils: WakuUtils) {
+    return utils.createRoutingInfo(this.networkConfig(clusterId, sdk), { contentTopic });
+  }
+
   async start(): Promise<boolean> {
     if (this.node?.isStarted()) return true;
     if (this.starting) return this.starting;
 
     this.starting = (async () => {
       try {
+        const { sdk, utils } = await this.loadSdk();
+
         const bootstrapPeers = (process.env.WAKU_BOOTSTRAP_PEERS || "")
           .split(",")
           .map((s) => s.trim())
@@ -149,10 +166,10 @@ export class WakuNodeService {
           ? `Custom bootstrap (${bootstrapPeers.length} peers, cluster ${this.clusterId})`
           : `Status Network default bootstrap (cluster ${this.clusterId})`;
 
-        const node = await createLightNode({
+        const node = await sdk.createLightNode({
           defaultBootstrap: bootstrapPeers.length === 0,
           bootstrapPeers: bootstrapPeers.length ? bootstrapPeers : undefined,
-          networkConfig: networkConfig(this.clusterId),
+          networkConfig: this.networkConfig(this.clusterId, sdk),
         });
 
         await node.start();
@@ -160,7 +177,7 @@ export class WakuNodeService {
 
         try {
           await Promise.race([
-            node.waitForPeers([Protocols.LightPush, Protocols.Filter]),
+            node.waitForPeers([sdk.Protocols.LightPush, sdk.Protocols.Filter]),
             new Promise<void>((resolve) => setTimeout(resolve, 12_000)),
           ]);
         } catch {
@@ -174,9 +191,17 @@ export class WakuNodeService {
         console.log(
           `[IINA SERVER] Waku LightNode online — peerId ${peerId}, peers ${peerCount}, fleet: ${this.fleetLabel}`
         );
+        if (peerCount === 0) {
+          console.warn(
+            "[IINA SERVER] Waku has 0 peers so far — LightPush/Filter need fleet reachability. " +
+              "Set WAKU_BOOTSTRAP_PEERS if the default Status bootstrap is unreachable from this host."
+          );
+        }
         return true;
       } catch (err) {
         this.node = null;
+        this.sdk = null;
+        this.utils = null;
         console.warn(
           `[IINA SERVER] Waku LightNode failed to start (${(err as Error).message}). ` +
             "Waku endpoints will return 503; the rest of the server stays up."
@@ -205,11 +230,11 @@ export class WakuNodeService {
   }
 
   async publish(contentTopic: string, wireMsg: WakuWireMessage): Promise<void> {
-    if (!this.isAvailable() || !this.node) {
+    if (!this.isAvailable() || !this.node || !this.sdk || !this.utils) {
       throw new Error("Waku node unavailable");
     }
-    const routingInfo = routingFor(contentTopic, this.clusterId);
-    const encoder = createEncoder({ contentTopic, routingInfo });
+    const routingInfo = this.routingFor(contentTopic, this.clusterId, this.sdk, this.utils);
+    const encoder = this.sdk.createEncoder({ contentTopic, routingInfo });
     const payload = b64ToBytes(wireMsg.payload);
     const result = await this.node.lightPush.send(encoder, {
       payload,
@@ -236,12 +261,12 @@ export class WakuNodeService {
     pageSize: number
   ): Promise<{ messages: WakuWireMessage[]; source: "store" | "cache"; totalCount: number }> {
     const safePageSize = Math.max(1, Math.min(100, pageSize));
-    if (!this.isAvailable() || !this.node) {
+    if (!this.isAvailable() || !this.node || !this.sdk || !this.utils) {
       throw new Error("Waku node unavailable");
     }
 
-    const routingInfo = routingFor(contentTopic, this.clusterId);
-    const decoder = createDecoder(contentTopic, routingInfo);
+    const routingInfo = this.routingFor(contentTopic, this.clusterId, this.sdk, this.utils);
+    const decoder = this.sdk.createDecoder(contentTopic, routingInfo);
     const collected: WakuWireMessage[] = [];
     try {
       await Promise.race([
@@ -281,14 +306,14 @@ export class WakuNodeService {
   }
 
   async subscribeTopics(topics: string[]): Promise<string[]> {
-    if (!this.isAvailable() || !this.node) {
+    if (!this.isAvailable() || !this.node || !this.sdk || !this.utils) {
       throw new Error("Waku node unavailable");
     }
     for (const topic of topics) {
       if (!topic || this.subscribed.has(topic)) continue;
       try {
-        const routingInfo = routingFor(topic, this.clusterId);
-        const decoder = createDecoder(topic, routingInfo);
+        const routingInfo = this.routingFor(topic, this.clusterId, this.sdk, this.utils);
+        const decoder = this.sdk.createDecoder(topic, routingInfo);
         const ok = await this.node.filter.subscribe(decoder, (msg) => {
           if (!msg?.payload) return;
           const wire = decodedToWire(msg, topic);

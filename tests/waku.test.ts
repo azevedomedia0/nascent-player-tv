@@ -72,3 +72,28 @@ describe("WakuNodeService offline state", () => {
     );
   });
 });
+
+describe("Waku ESM load safety (CJS production bundle)", () => {
+  it("does not statically import @waku/sdk at module evaluation time", async () => {
+    // Guard against regressing to `import { … } from "@waku/sdk"` which
+    // becomes require() in dist/server.cjs and crashes Node on boot.
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const source = await fs.readFile(
+      path.resolve("src/lib/waku/node.ts"),
+      "utf8"
+    );
+    assert.match(source, /import\(["']@waku\/sdk["']\)/);
+    assert.match(source, /import\(["']@waku\/utils["']\)/);
+    // Static runtime import lines must not exist (import type / typeof import OK).
+    const runtimeImports = source
+      .split("\n")
+      .filter((line) => /^\s*import\s+(?!type\b)/.test(line))
+      .filter((line) => /from\s+["']@waku\//.test(line));
+    assert.deepEqual(
+      runtimeImports,
+      [],
+      `Unexpected static @waku runtime imports:\n${runtimeImports.join("\n")}`
+    );
+  });
+});
