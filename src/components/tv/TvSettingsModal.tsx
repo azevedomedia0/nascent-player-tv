@@ -225,19 +225,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
       isOfficial: false,
       rating: '4.9',
       downloads: '175K'
-    },
-    {
-      id: 'fanart-tv',
-      name: 'Fanart.tv Ultra HD ClearArt',
-      version: 'v1.1.2',
-      author: 'Fanart Archive',
-      category: 'catalogs',
-      description: 'Transparent movie logos, disc art, animated posters, and 4K character banners.',
-      enabled: false,
-      isInstalled: false,
-      isOfficial: false,
-      rating: '4.6',
-      downloads: '42K'
     }
   ]);
 

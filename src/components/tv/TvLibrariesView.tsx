@@ -9,6 +9,7 @@ import {
   Wifi, 
   Users, 
   Play, 
+  Shuffle,
   CheckCircle2, 
   RefreshCw, 
   LayoutGrid, 
@@ -830,32 +831,81 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
       {/* 5. MEDIA DISPLAY: GRID OR INSPECTOR LIST */}
       {(activeLibraryTab === 'all' || activeLibraryTab === 'longest' || activeLibraryTab === 'masters' || activeLibraryTab === 'played' || activeLibraryTab === 'peers') && (
         <div className="flex flex-col gap-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider font-mono flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider font-mono flex items-center gap-2 min-w-0">
               {activeLibraryTab === 'peers' ? (
                 <>
-                  <Users className="w-4 h-4 text-pink-400" />
-                  <span>
+                  <Users className="w-4 h-4 text-pink-400 shrink-0" />
+                  <span className="truncate">
                     Peer Shared Files ({peerSharedFiles.length} files across {categorizedPeerLibraries.length} Peer Libraries)
                   </span>
                 </>
               ) : activeLibraryTab === 'played' ? (
                 <>
-                  <History className="w-4 h-4 text-emerald-400" />
+                  <History className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Recently Played ({filteredLocalFiles.length})</span>
                 </>
               ) : activeLibraryTab === 'longest' ? (
                 <>
-                  <Clock className="w-4 h-4 text-amber-400" />
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>Longest ({filteredLocalFiles.length})</span>
                 </>
               ) : (
                 <>
-                  <Clock className="w-4 h-4 text-sky-400" />
+                  <Clock className="w-4 h-4 text-sky-400 shrink-0" />
                   <span>Recently Added ({filteredLocalFiles.length})</span>
                 </>
               )}
             </h3>
+
+            <div className="flex items-center gap-2 shrink-0 ml-auto">
+              <button
+                type="button"
+                disabled={
+                  activeLibraryTab === 'peers'
+                    ? peerSharedFiles.length === 0
+                    : filteredLocalFiles.length === 0
+                }
+                onClick={() => {
+                  if (activeLibraryTab === 'peers') {
+                    if (peerSharedFiles.length === 0) return;
+                    onPlayMovie(peerSharedFiles[0]);
+                    return;
+                  }
+                  if (filteredLocalFiles.length === 0) return;
+                  onPlayMovie(convertToMovie(filteredLocalFiles[0]));
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-sm shadow-sky-500/20"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Play All</span>
+              </button>
+              <button
+                type="button"
+                disabled={
+                  activeLibraryTab === 'peers'
+                    ? peerSharedFiles.length === 0
+                    : filteredLocalFiles.length === 0
+                }
+                onClick={() => {
+                  if (activeLibraryTab === 'peers') {
+                    if (peerSharedFiles.length === 0) return;
+                    const pick =
+                      peerSharedFiles[Math.floor(Math.random() * peerSharedFiles.length)];
+                    onPlayMovie(pick);
+                    return;
+                  }
+                  if (filteredLocalFiles.length === 0) return;
+                  const pick =
+                    filteredLocalFiles[Math.floor(Math.random() * filteredLocalFiles.length)];
+                  onPlayMovie(convertToMovie(pick));
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold border border-white/15 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Shuffle className="w-3.5 h-3.5" />
+                <span>Shuffle All</span>
+              </button>
+            </div>
           </div>
 
           {(activeLibraryTab === 'peers' ? categorizedPeerLibraries.length === 0 : filteredLocalFiles.length === 0) ? (
