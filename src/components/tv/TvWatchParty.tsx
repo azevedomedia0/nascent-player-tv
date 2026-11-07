@@ -10,10 +10,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Users, Play, Copy, Check, Send, LogIn } from 'lucide-react';
 import { FeaturedMovie } from '../../lib/types';
 import { apiFetch } from '../../lib/apiAuth';
+import { WatchPartyStartPayload } from '../../lib/watchPartySession';
 
 interface TvWatchPartyProps {
   movie: FeaturedMovie;
-  onStartParty: () => void;
+  onStartParty: (session: WatchPartyStartPayload) => void;
   onClose: () => void;
 }
 
@@ -472,7 +473,17 @@ export const TvWatchParty: React.FC<TvWatchPartyProps> = ({
             <div className="flex justify-end pt-4 border-t border-white/10">
               <button
                 onClick={() => {
-                  onStartParty();
+                  if (!room) return;
+                  onStartParty({
+                    roomId: room.roomId,
+                    userId: userIdRef.current,
+                    isHost: isHostRef.current,
+                    displayName: displayName.trim() || (isHostRef.current ? 'Host' : 'Watcher'),
+                    movieId: movie.id,
+                    hostToken: isHostRef.current ? hostTokenRef.current : null,
+                  });
+                  // Token stays with App after handoff — clear local ref so unmount can't double-clear mid-flight.
+                  hostTokenRef.current = null;
                   onClose();
                 }}
                 className="flex items-center gap-2.5 px-8 py-3.5 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500 text-black font-extrabold text-base shadow-xl shadow-sky-500/30 hover:scale-105 active:scale-95 transition-all"

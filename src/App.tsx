@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Bookmark } from 'lucide-react';
 import { TvTopNav, TvTab } from './components/tv/TvTopNav';
 import { 
@@ -29,6 +29,10 @@ import { TvSidebar } from './components/tv/TvSidebar';
 import { TvLibrariesView } from './components/tv/TvLibrariesView';
 import { isTvSeries } from './lib/tvEpisodeData';
 import { apiFetch } from './lib/apiAuth';
+import {
+  WatchPartyRemoteSync,
+  WatchPartySession,
+} from './lib/watchPartySession';
 import { 
   DISNEY_PLUS_TOP_20,
   DISNEY_PLUS_TOP_20_SHOWS,
@@ -196,6 +200,14 @@ export default function App() {
   const [activePlayerMovie, setActivePlayerMovie] = useState<FeaturedMovie | null>(null);
   const [inspectedMovie, setInspectedMovie] = useState<FeaturedMovie | null>(null);
   const [watchPartyMovie, setWatchPartyMovie] = useState<FeaturedMovie | null>(null);
+  // Active synced watch — hostToken lives only in the ref below.
+  const [watchPartySession, setWatchPartySession] = useState<WatchPartySession | null>(null);
+  const watchPartyHostTokenRef = useRef<string | null>(null);
+  const playbackReportRef = useRef<{ currentTime: number; paused: boolean }>({
+    currentTime: 0,
+    paused: true,
+  });
+  const [partyRemoteSync, setPartyRemoteSync] = useState<WatchPartyRemoteSync | null>(null);
 
   // Left sidebar & Peer node state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -304,47 +316,109 @@ export default function App() {
       throw new Error((body as { error?: string }).error || `Rescan failed (${res.status})`);
     }
     const data = await res.json();
-    if (Array.isArray(data.media)) {
-      const mapped: LocalMediaFileItem[] = data.media.map((m: Record<string, unknown>) => {
-        const filename = String(m.filename || '');
-        const streamUrl = String(
-          m.url || (filename ? `/api/stream/${encodeURIComponent(filename)}` : '')
-        );
-        return {
-          id: String(m.id),
-          filename: filename || String(m.id),
-          title: String(m.title || filename || 'Untitled'),
-          path: filename ? `media/${filename}` : streamUrl,
-          resolution: String(m.resolution || '—'),
-          fps: String(m.fps || '—'),
-          codec: String(m.codec || '—'),
-          container: filename ? filename.split('.').pop()?.toUpperCase() || '—' : '—',
-          audioTrack: String(m.audioTrack || '—'),
-          fileSize: String(m.fileSize || '—'),
-          bitrate: String(m.bitrate || '—'),
-          duration:
-            typeof m.duration === 'number'
-              ? `${Math.floor(m.duration / 60)}m`
-              : String(m.duration || '—'),
-          releaseYear: String(m.releaseYear || ''),
-          posterUrl: String(m.posterUrl || ''),
-          bannerUrl: String(m.bannerUrl || ''),
-          genres: Array.isArray(m.genres) ? (m.genres as string[]) : [],
-          rating: typeof m.rating === 'number' ? m.rating : 0,
-          certification: String(m.certification || ''),
-          director: String(m.director || ''),
-          summary: String(m.summary || ''),
-          streamUrl,
-        };
-      });
-      if (mapped.length > 0) setLocalMediaFiles(mapped);
-    }
+    // Only real local files from MEDIA_DIR — never remote sample CDN entries.
+    const localItems = Array.isArray(data.media)
+      ? (data.media as Record<string, unknown>[]).filter((m) => m.isLocal === true)
+      : [];
+    const mapped: LocalMediaFileItem[] = localItems.map((m) => {
+      const filename = String(m.filename || '');
+      const id = String(m.id);
+      return {
+        id,
+        filename,
+        title: String(m.title || filename || 'Untitled'),
+        path: filename ? `media/${filename}` : '—',
+        resolution: String(m.resolution || '—'),
+        fps: String(m.fps || '—'),
+        codec: String(m.codec || '—'),
+        container: filename ? filename.split('.').pop()?.toUpperCase() || '—' : '—',
+        audioTrack: String(m.audioTrack || '—'),
+        fileSize: String(m.fileSize || '—'),
+        bitrate: String(m.bitrate || '—'),
+        duration:
+          typeof m.duration === 'number' && m.duration > 0
+            ? `${Math.floor(m.duration / 60)}m`
+            : String(m.duration || '—'),
+        releaseYear: String(m.releaseYear || ''),
+        posterUrl: String(m.posterUrl || ''),
+        bannerUrl: String(m.bannerUrl || ''),
+        genres: Array.isArray(m.genres) ? (m.genres as string[]) : [],
+        rating: typeof m.rating === 'number' ? m.rating : 0,
+        certification: String(m.certification || ''),
+        director: String(m.director || ''),
+        summary: String(m.summary || ''),
+        streamUrl: `/api/stream?id=${encodeURIComponent(id)}`,
+      };
+    });
+    // Replace with the local scan result (may be empty — honest empty library).
+    setLocalMediaFiles(mapped);
     return {
       scanned: Number(data.scanned) || 0,
       added: Number(data.added) || 0,
-      total: Number(data.total) || 0,
+      total: mapped.length,
     };
   };
+
+  const clearWatchPartySession = () => {
+    watchPartyHostTokenRef.current = null;
+    setWatchPartySession(null);
+    setPartyRemoteSync(null);
+  };
+
+  const handlePlaybackReport = useCallback(
+    (snap: { currentTime: number; paused: boolean }) => {
+      playbackReportRef.current = snap;
+    },
+    []
+  );
+
+  // Keep room in sync with the real player while a session is active.
+  useEffect(() => {
+    if (!watchPartySession || !activePlayerMovie) return;
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const body: Record<string, unknown> = {
+          userId: watchPartySession.userId,
+          userName: watchPartySession.displayName,
+        };
+        if (watchPartySession.isHost && watchPartyHostTokenRef.current) {
+          const snap = playbackReportRef.current;
+          body.hostToken = watchPartyHostTokenRef.current;
+          body.playbackState = snap.paused ? 'paused' : 'playing';
+          body.currentTime = snap.currentTime;
+          body.currentMediaId = watchPartySession.movieId;
+        }
+        const res = await apiFetch(
+          `/api/watchparty/${encodeURIComponent(watchPartySession.roomId)}/sync`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }
+        );
+        if (!res.ok || cancelled) return;
+        const room = await res.json();
+        if (cancelled || watchPartySession.isHost) return;
+        // Joiner: drive local player from host room state.
+        setPartyRemoteSync({
+          currentTime: typeof room.currentTime === 'number' ? room.currentTime : 0,
+          playbackState: room.playbackState === 'playing' ? 'playing' : 'paused',
+          syncKey: Number(room.lastSyncTime) || Date.now(),
+        });
+      } catch {
+        // Keep polling through transient errors.
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [watchPartySession, activePlayerMovie]);
   
   // UI Dialog states
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -1026,12 +1100,19 @@ export default function App() {
         <TvPlayer
           movie={activePlayerMovie}
           videoUrl={getStreamUrlForMovie(activePlayerMovie)}
-          onClose={() => setActivePlayerMovie(null)}
+          onClose={() => {
+            setActivePlayerMovie(null);
+            clearWatchPartySession();
+          }}
           onOpenStreamingHUD={() => setIsStreamingHUDOpen(true)}
           eqGains={eqGains}
           onEqChange={handleEqChange}
           audioPreset={audioPreset}
           onAudioPresetChange={handleAudioPresetChange}
+          onPlaybackReport={watchPartySession ? handlePlaybackReport : undefined}
+          remoteSync={
+            watchPartySession && !watchPartySession.isHost ? partyRemoteSync : null
+          }
           onNextMedia={() => {
             const nextIdx = (moviesList.findIndex((m) => m.id === activePlayerMovie.id) + 1) % moviesList.length;
             setActivePlayerMovie(moviesList[nextIdx]);
@@ -1110,8 +1191,17 @@ export default function App() {
       {watchPartyMovie && (
         <TvWatchParty
           movie={watchPartyMovie}
-          onStartParty={() => {
+          onStartParty={(session) => {
             const movieToPlay = watchPartyMovie;
+            watchPartyHostTokenRef.current = session.hostToken;
+            setWatchPartySession({
+              roomId: session.roomId,
+              userId: session.userId,
+              isHost: session.isHost,
+              displayName: session.displayName,
+              movieId: session.movieId,
+            });
+            setPartyRemoteSync(null);
             setWatchPartyMovie(null);
             handlePlayMovie(movieToPlay);
           }}

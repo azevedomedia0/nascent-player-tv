@@ -24,6 +24,7 @@ import {
   Music
 } from 'lucide-react';
 import { FeaturedMovie, SubtitleTrack } from '../../lib/types';
+import { WatchPartyRemoteSync } from '../../lib/watchPartySession';
 
 interface TvPlayerProps {
   movie: FeaturedMovie;
@@ -42,6 +43,10 @@ interface TvPlayerProps {
   onAudioPresetChange: (preset: 'normal' | 'vocal' | 'bass' | 'cinema' | 'custom') => void;
   onNextMedia?: () => void;
   onPrevMedia?: () => void;
+  /** Host → App: report real video clock for watch-party sync. */
+  onPlaybackReport?: (snapshot: { currentTime: number; paused: boolean }) => void;
+  /** Joiner ← App: apply host room state to this video element. */
+  remoteSync?: WatchPartyRemoteSync | null;
 }
 
 export const TvPlayer: React.FC<TvPlayerProps> = ({
@@ -55,9 +60,12 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
   onAudioPresetChange,
   onNextMedia,
   onPrevMedia,
+  onPlaybackReport,
+  remoteSync = null,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastAppliedSyncKey = useRef<number | null>(null);
 
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -143,6 +151,43 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
       videoRef.current.playbackRate = speed;
     }
   };
+
+  // Report real playback clock to watch-party sync (host).
+  useEffect(() => {
+    if (!onPlaybackReport) return;
+    const tick = () => {
+      const v = videoRef.current;
+      if (!v) return;
+      onPlaybackReport({ currentTime: v.currentTime || 0, paused: v.paused });
+    };
+    tick();
+    const id = window.setInterval(tick, 500);
+    return () => window.clearInterval(id);
+  }, [onPlaybackReport]);
+
+  // Apply host room state on the joiner player.
+  useEffect(() => {
+    if (!remoteSync || !videoRef.current) return;
+    if (lastAppliedSyncKey.current === remoteSync.syncKey) return;
+    lastAppliedSyncKey.current = remoteSync.syncKey;
+
+    const v = videoRef.current;
+    const drift = Math.abs((v.currentTime || 0) - remoteSync.currentTime);
+    if (drift > 1.25) {
+      v.currentTime = Math.max(0, remoteSync.currentTime);
+      setCurrentTime(v.currentTime);
+    }
+    if (remoteSync.playbackState === 'playing') {
+      if (v.paused) {
+        v.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      } else {
+        setIsPlaying(true);
+      }
+    } else if (!v.paused) {
+      v.pause();
+      setIsPlaying(false);
+    }
+  }, [remoteSync]);
 
   // Keyboard navigation inside player
   useEffect(() => {

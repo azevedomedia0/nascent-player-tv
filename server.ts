@@ -448,12 +448,16 @@ app.post("/api/media/rescan", (req, res) => {
       added += 1;
     }
     writeJSON(MEDIA_FILE, media);
+    // Only return real on-disk local files — never remote sample CDN rows
+    // with invented media/ paths for the Libraries UI.
+    const localMedia = media.filter((m: any) => m && m.isLocal === true && m.filename);
     res.json({
       ok: true,
       scanned,
       added,
-      total: media.length,
-      media,
+      total: localMedia.length,
+      libraryTotal: media.length,
+      media: localMedia,
     });
   } catch (err) {
     console.error("[IINA SERVER] media rescan failed:", err);
