@@ -50,6 +50,7 @@ interface TvSettingsModalProps {
   onToggleRemote?: () => void;
   isRemoteOpen?: boolean;
   onOpenPlugins?: () => void;
+  onOpenWakuChat?: () => void;
   eqGains: {
     hz60: number;
     hz230: number;
@@ -102,6 +103,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   onToggleRemote,
   isRemoteOpen = false,
   onOpenPlugins,
+  onOpenWakuChat,
   eqGains,
   onEqChange,
   audioPreset,
@@ -1292,6 +1294,27 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Local Server & Network Diagnostics</h3>
                   <p className="text-xs text-zinc-400 mb-4">Built-in reverse proxy, port binding, DLNA, and LAN sync.</p>
+
+                  {onOpenWakuChat && (
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-3 mb-4">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Waku Mesh Chat</h4>
+                        <p className="text-xs text-zinc-400">
+                          Real LightPush / Filter lounge — shows offline when the node is down
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onOpenWakuChat();
+                          onClose();
+                        }}
+                        className="px-4 py-2 rounded-full bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold transition cursor-pointer shrink-0"
+                      >
+                        Open Lounge
+                      </button>
+                    </div>
+                  )}
 
                   <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3 mb-4">
                     <div className="flex items-center gap-3 mb-1">

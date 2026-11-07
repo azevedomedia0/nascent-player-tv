@@ -24,6 +24,11 @@ import {
   pipeProxyResponse,
   proxyFetch,
 } from "./src/lib/reverseProxy";
+import {
+  wakuService,
+  type WakuWireMessage,
+} from "./src/lib/waku/node";
+import { validateWakuPublish } from "./src/lib/waku/validate";
 
 dotenv.config();
 
@@ -1536,200 +1541,119 @@ app.get("/api/stremio-mock/stream/:type/:id.json", (req, res) => {
 });
 
 // ===========================================================================
-// WAKU v2 DECENTRALIZED MESSAGING PROTOCOL SERVICE
-// Standard Waku v2 (Relay, LightPush, Filter, Store) Implementation
+// WAKU v2 — real LightNode (LightPush / Filter / Store) via @waku/sdk
+// Existing REST shapes are preserved. Fake seed data / peers removed.
 // ===========================================================================
-interface WakuStoredMessage {
-  payload: string; // Base64
-  contentTopic: string;
-  version: number;
-  timestamp: number;
-  ephemeral?: boolean;
-  meta?: string;
-}
-
-const wakuMessageStore: Record<string, WakuStoredMessage[]> = {};
 const wakuConnectedSseClients: express.Response[] = [];
 
-const initWakuStore = () => {
-  const seedTopic = (topic: string, msgs: Array<{ senderName: string; avatar: string; color: string; text: string; time: string; reactions?: any[] }>) => {
-    wakuMessageStore[topic] = msgs.map((m, idx) => {
-      const payloadObj = {
-        id: `waku-seed-${idx}-${Date.now()}`,
-        senderId: m.senderName.toLowerCase(),
-        senderName: m.senderName,
-        senderAvatar: m.avatar,
-        senderColor: m.color,
-        isMe: false,
-        text: m.text,
-        timestamp: m.time,
-        reactions: m.reactions || []
-      };
-      return {
-        payload: Buffer.from(JSON.stringify(payloadObj)).toString("base64"),
-        contentTopic: topic,
-        version: 0,
-        timestamp: Date.now() - (msgs.length - idx) * 120000,
-        ephemeral: false
-      };
-    });
-  };
+function wakuUnavailable(res: express.Response) {
+  return res.status(503).json({ error: "Waku node unavailable" });
+}
 
-  seedTopic("/iina-player/1/lounge/proto", [
-    { senderName: "Sophia_Streams", avatar: "S", color: "#38bdf8", text: "Welcome to the Waku decentralized lounge! Messages are relayed over the libp2p mesh without central servers.", time: "18:15", reactions: [{ emoji: "🌐", count: 4, hasReacted: true }] },
-    { senderName: "Alex_Gamer", avatar: "A", color: "#a855f7", text: "Testing Waku 19/WAKU2-LIGHTPUSH and 12/WAKU2-FILTER protocols. Latency is sub-50ms.", time: "18:22", reactions: [{ emoji: "🚀", count: 3, hasReacted: false }] },
-    { senderName: "Retro_Jack", avatar: "J", color: "#fb923c", text: "The bitrate on Tears of Steel stream is unreal! Synced my playback via Waku ephemeral message.", time: "18:31", reactions: [{ emoji: "🍿", count: 5, hasReacted: true }] }
-  ]);
-
-  seedTopic("/iina-player/1/watch-party/proto", [
-    { senderName: "Alex_Gamer", avatar: "A", color: "#a855f7", text: "Decentralized Watch Party topic active. Room synchronization heartbeats relayed over Waku.", time: "17:45", reactions: [{ emoji: "🎬", count: 2, hasReacted: false }] }
-  ]);
-
-  seedTopic("/iina-player/1/4k-streamers/proto", [
-    { senderName: "Sophia_Streams", avatar: "S", color: "#38bdf8", text: "Anyone testing the AV1 hardware acceleration profile on 4K 60fps streams?", time: "18:02", reactions: [{ emoji: "⚡", count: 2, hasReacted: true }] }
-  ]);
-};
-
-initWakuStore();
-
-// Waku Node Information (Waku v2 Debug API)
-app.get("/api/waku/v2/debug/v1/info", (req, res) => {
-  res.json({
-    listenAddresses: [
-      "/dns4/node-01.do-ams3.wakuv2.test.status.im/tcp/8000/wss/p2p/16Uiu2HAmPLeqi4KnXM64cvGaMFujKdBp65S29496A8rnnyHGuyY1",
-      "/dns4/node-01.ac-cn-hongkong-c.wakuv2.test.status.im/tcp/8000/wss/p2p/16Uiu2HAmJb2e28qAeRxAN4MTpnn2EuPnMwn8b85RTVCcNpAEq3cU",
-      "/ip4/127.0.0.1/tcp/8000/ws/p2p/16Uiu2HAmLocalNodeIINAPlayer3000"
-    ],
-    enr: "enr:-Iu4QGg1A7q_fDjMvdQ3gWb3p3u7V-5cM2Z8qF9zX8b1e-6A7rB8C9dEf0_gHiJkLmNoPqRsTuVwXyZ1",
-    peerId: "16Uiu2HAmWakuNodeIINAPlayer3000Relay",
-    fleet: "Status Testnet Fleet (wakuv2.test.status.im)",
-    protocols: [
-      "/vac/waku/relay/2.0.0",
-      "/vac/waku/lightpush/2.0.0",
-      "/vac/waku/filter/2.0.0",
-      "/vac/waku/store/2.0.0"
-    ],
-    peerCount: 8,
-    version: "nwaku/v0.34.0-iina-node"
-  });
-});
-
-// Waku Relay GET Messages
-app.get("/api/waku/v2/relay/v1/messages/:contentTopic", (req, res) => {
-  const contentTopic = decodeURIComponent(req.params.contentTopic);
-  const messages = wakuMessageStore[contentTopic] || [];
-  res.json(messages);
-});
-
-// Waku Relay POST Message (Publish via Relay / LightPush)
-// SECURITY: this was an unauthenticated, uncapped spam relay — any
-// payload of any size was stored and broadcast to all SSE clients.
-// Now: payloads are capped at 64 KB, topics at 200 chars, and the
-// endpoint is rate-limited (20/min/IP, see the rate limiter above).
-app.post("/api/waku/v2/relay/v1/messages/:contentTopic", (req, res) => {
-  const contentTopic = decodeURIComponent(req.params.contentTopic);
-  const wireMsg = req.body as WakuStoredMessage;
-
-  if (!wireMsg || !wireMsg.payload) {
-    return res.status(400).json({ error: "Invalid Waku message body: payload required" });
-  }
-  if (typeof wireMsg.payload !== "string" || wireMsg.payload.length > 65536) {
-    return res.status(413).json({ error: "Waku payload exceeds the 64 KB limit" });
-  }
-  if (contentTopic.length > 200) {
-    return res.status(400).json({ error: "contentTopic is too long" });
-  }
-
-  const normalizedMsg: WakuStoredMessage = {
-    payload: wireMsg.payload,
-    contentTopic: wireMsg.contentTopic || contentTopic,
-    version: wireMsg.version || 0,
-    timestamp: wireMsg.timestamp || Date.now(),
-    ephemeral: !!wireMsg.ephemeral,
-    meta: wireMsg.meta
-  };
-
-  // If not ephemeral, persist in Store protocol buffer
-  if (!normalizedMsg.ephemeral) {
-    if (!wakuMessageStore[contentTopic]) {
-      wakuMessageStore[contentTopic] = [];
-    }
-    wakuMessageStore[contentTopic].push(normalizedMsg);
-    if (wakuMessageStore[contentTopic].length > 150) {
-      wakuMessageStore[contentTopic].shift();
-    }
-  }
-
-  // Broadcast to all SSE connected peer clients
-  const sseData = `data: ${JSON.stringify(normalizedMsg)}\n\n`;
-  wakuConnectedSseClients.forEach(client => {
+function broadcastWakuSse(msg: WakuWireMessage) {
+  const sseData = `data: ${JSON.stringify(msg)}\n\n`;
+  for (const client of [...wakuConnectedSseClients]) {
     try {
       client.write(sseData);
     } catch {
       // client disconnected
     }
-  });
+  }
+}
 
-  res.status(200).json({ success: true, timestamp: normalizedMsg.timestamp });
+wakuService.onMessage((msg) => broadcastWakuSse(msg));
+
+// Waku Node Information (Waku v2 Debug API)
+app.get("/api/waku/v2/debug/v1/info", (req, res) => {
+  if (!wakuService.isAvailable()) return wakuUnavailable(res);
+  try {
+    res.json(wakuService.getInfo());
+  } catch {
+    return wakuUnavailable(res);
+  }
 });
 
-// Waku Store Protocol Query
-app.post("/api/waku/v2/store/v1/messages", (req, res) => {
-  const { contentTopic, pageSize = 50 } = req.body;
+// Waku Relay GET Messages — local bounded cache for the topic
+app.get("/api/waku/v2/relay/v1/messages/:contentTopic", (req, res) => {
+  if (!wakuService.isAvailable()) return wakuUnavailable(res);
+  const contentTopic = decodeURIComponent(req.params.contentTopic);
+  res.json(wakuService.getCached(contentTopic));
+});
+
+// Waku Relay POST Message (Publish via LightPush)
+// SECURITY: payloads capped at 64 KB, topics at 200 chars, rate-limited
+// (20/min/IP) and token-auth required for POST (see middleware above).
+app.post("/api/waku/v2/relay/v1/messages/:contentTopic", async (req, res) => {
+  if (!wakuService.isAvailable()) return wakuUnavailable(res);
+  const contentTopic = decodeURIComponent(req.params.contentTopic);
+  const validated = validateWakuPublish(contentTopic, req.body);
+  if (validated.ok === false) {
+    return res.status(validated.status).json({ error: validated.error });
+  }
+  const normalizedMsg: WakuWireMessage = validated.message;
+
+  try {
+    await wakuService.publish(contentTopic, normalizedMsg);
+    res.status(200).json({ success: true, timestamp: normalizedMsg.timestamp });
+  } catch (err) {
+    console.warn(`[IINA SERVER] Waku publish failed: ${(err as Error).message}`);
+    return wakuUnavailable(res);
+  }
+});
+
+// Waku Store Protocol Query — real Store, cache fallback labelled
+app.post("/api/waku/v2/store/v1/messages", async (req, res) => {
+  if (!wakuService.isAvailable()) return wakuUnavailable(res);
+  const { contentTopic, pageSize = 50 } = req.body || {};
   if (!contentTopic) {
     return res.status(400).json({ error: "contentTopic required for Store query" });
   }
-
-  const messages = wakuMessageStore[contentTopic] || [];
-  const safePageSize = Math.max(1, Math.min(100, Number(pageSize) || 50));
-  const paged = messages.slice(-safePageSize);
-  res.json({
-    messages: paged,
-    pagination: {
-      pageSize: safePageSize,
-      totalCount: messages.length
-    }
-  });
+  try {
+    const result = await wakuService.queryStore(contentTopic, Number(pageSize) || 50);
+    res.json({
+      messages: result.messages,
+      source: result.source,
+      pagination: {
+        pageSize: Math.max(1, Math.min(100, Number(pageSize) || 50)),
+        totalCount: result.totalCount,
+      },
+    });
+  } catch {
+    return wakuUnavailable(res);
+  }
 });
 
 // Waku Filter Protocol Subscription
-app.post("/api/waku/v2/filter/v1/subscription", (req, res) => {
-  const { contentFilters } = req.body;
-  res.json({
-    status: "active",
-    subscribedTopics: contentFilters || []
-  });
+app.post("/api/waku/v2/filter/v1/subscription", async (req, res) => {
+  if (!wakuService.isAvailable()) return wakuUnavailable(res);
+  const { contentFilters } = req.body || {};
+  const topics: string[] = Array.isArray(contentFilters)
+    ? contentFilters.map((t: unknown) => String(t)).filter(Boolean)
+    : [];
+  try {
+    const subscribedTopics = await wakuService.subscribeTopics(topics);
+    res.json({
+      status: "active",
+      subscribedTopics,
+    });
+  } catch {
+    return wakuUnavailable(res);
+  }
 });
 
-// Waku Peers List
-app.get("/api/waku/v2/peers", (req, res) => {
-  res.json([
-    {
-      id: "16Uiu2HAmPLeqi4KnXM64cvGaMFujKdBp65S29496A8rnnyHGuyY1",
-      multiaddr: "/dns4/node-01.do-ams3.wakuv2.test.status.im/tcp/8000/wss/p2p/16Uiu2HAmPLeqi4KnXM64cvGaMFujKdBp65S29496A8rnnyHGuyY1",
-      latencyMs: 38,
-      protocols: ["/vac/waku/relay/2.0.0", "/vac/waku/store/2.0.0"],
-      status: "connected"
-    },
-    {
-      id: "16Uiu2HAmJb2e28qAeRxAN4MTpnn2EuPnMwn8b85RTVCcNpAEq3cU",
-      multiaddr: "/dns4/node-01.ac-cn-hongkong-c.wakuv2.test.status.im/tcp/8000/wss/p2p/16Uiu2HAmJb2e28qAeRxAN4MTpnn2EuPnMwn8b85RTVCcNpAEq3cU",
-      latencyMs: 64,
-      protocols: ["/vac/waku/relay/2.0.0", "/vac/waku/filter/2.0.0", "/vac/waku/lightpush/2.0.0"],
-      status: "connected"
-    },
-    {
-      id: "16Uiu2HAmLocalNodeIINAPlayer3000",
-      multiaddr: "/ip4/127.0.0.1/tcp/8000/ws/p2p/16Uiu2HAmLocalNodeIINAPlayer3000",
-      latencyMs: 2,
-      protocols: ["/vac/waku/relay/2.0.0", "/vac/waku/lightpush/2.0.0", "/vac/waku/filter/2.0.0", "/vac/waku/store/2.0.0"],
-      status: "connected"
-    }
-  ]);
+// Waku Peers List — real connected peers
+app.get("/api/waku/v2/peers", async (req, res) => {
+  if (!wakuService.isAvailable()) return wakuUnavailable(res);
+  try {
+    res.json(await wakuService.getPeers());
+  } catch {
+    return wakuUnavailable(res);
+  }
 });
 
-// Waku SSE Stream endpoint for real-time peer mesh messages
+// Waku SSE Stream — fan-out of Filter / local publishes
 app.get("/api/waku/v2/stream", (req, res) => {
+  if (!wakuService.isAvailable()) return wakuUnavailable(res);
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -1768,6 +1692,18 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  // Start Waku after listen setup — failure must not block the server.
+  void wakuService.start().catch((err) => {
+    console.warn(`[IINA SERVER] Waku start rejected: ${(err as Error).message}`);
+  });
+
+  const shutdown = async () => {
+    await wakuService.stop();
+    server.close(() => process.exit(0));
+  };
+  process.once("SIGINT", () => void shutdown());
+  process.once("SIGTERM", () => void shutdown());
 
   server.listen(PORT, HOST, () => {
     console.log(`[IINA SERVER] Streaming container online on http://${HOST}:${PORT}`);
