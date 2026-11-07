@@ -7,12 +7,13 @@ import {
   Volume1,
   VolumeX, 
   Shuffle,
+  Repeat,
   Maximize, 
   Minimize, 
   Sliders, 
   Languages, 
   Gauge, 
-  ArrowLeft, 
+  Undo2, 
   FastForward, 
   Rewind, 
   Zap, 
@@ -64,6 +65,7 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
   const [volume, setVolume] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
+  const [isRepeat, setIsRepeat] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [activeSubtitle, setActiveSubtitle] = useState<string>('none');
   const [quality, setQuality] = useState<'4k' | '1080p' | '720p'>('4k');
@@ -191,7 +193,11 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
         poster={movie.bannerUrl || movie.posterUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => onNextMedia && onNextMedia()}
+        loop={isRepeat}
+        onEnded={() => {
+          if (isRepeat) return;
+          onNextMedia?.();
+        }}
         className="w-full h-full object-contain cursor-pointer"
         onClick={togglePlay}
         playsInline
@@ -203,12 +209,13 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
       }`}>
         <div className="flex items-center gap-4">
           <button
+            type="button"
             onClick={onClose}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white font-medium text-sm border border-white/20 focus:ring-2 focus:ring-sky-400 focus:outline-none transition-all"
+            className="shrink-0 w-[42px] h-[42px] flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-95 border border-white/15 focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all cursor-pointer"
+            aria-label="Go back"
             title="Exit Player (Esc)"
           >
-            <ArrowLeft className="w-5 h-5 text-sky-400" />
-            <span>Back to Google TV</span>
+            <Undo2 className="w-5 h-5 text-sky-400" />
           </button>
 
           <div className="flex flex-col">
@@ -263,6 +270,30 @@ export const TvPlayer: React.FC<TvPlayerProps> = ({
         <div className="flex items-center justify-between pt-2">
           {/* Left Transport */}
           <div className="flex items-center gap-3">
+            <div
+              className="min-w-[7.5rem] px-1 font-time text-sm font-semibold tabular-nums tracking-wide text-white drop-shadow-md"
+              aria-label="Playback time"
+            >
+              <span>{formatTime(currentTime)}</span>
+              <span className="text-zinc-400 mx-1.5">/</span>
+              <span className="text-zinc-300">{formatTime(duration)}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsRepeat((prev) => !prev)}
+              className={`p-3 rounded-full transition-all active:scale-95 focus:ring-2 focus:ring-sky-400 focus:outline-none ${
+                isRepeat
+                  ? 'bg-sky-500 text-black shadow-lg shadow-sky-500/30'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+              title={isRepeat ? 'Repeat on' : 'Repeat off'}
+              aria-label={isRepeat ? 'Disable repeat' : 'Enable repeat'}
+              aria-pressed={isRepeat}
+            >
+              <Repeat className="w-5 h-5" />
+            </button>
+
             {/* Rewind 10s */}
             <button
               onClick={() => seek(currentTime - 10)}

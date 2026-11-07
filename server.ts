@@ -87,9 +87,15 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
 app.use(rateLimit);
 
 // Optional token auth (see API_TOKEN above). Off by default so local
-// use is unchanged; enable it before exposing the server anywhere.
+// use is unchanged. For browser/remote access prefer the gateway
+// (NASCENT_GATEWAY_PASSWORD) — never bake a token into the SPA via
+// VITE_*. When the gateway is enabled it already authenticated the
+// request, so skip the API token check (browsers only send one
+// Authorization header). NASCENT_API_TOKEN is for scripts/curl when
+// the gateway is off.
 app.use("/api", (req, res, next) => {
   if (!API_TOKEN) return next();
+  if (isGatewayEnabled()) return next();
   // Status is always readable so Settings can show proxy state.
   if (req.method === "GET" && req.path === "/proxy/status") return next();
   const sensitiveGet =
@@ -100,8 +106,6 @@ app.use("/api", (req, res, next) => {
   if (req.method === "GET" && !sensitiveGet) return next();
   const auth = req.get("authorization") || "";
   const bearer = /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, "") : "";
-  // Prefer Bearer; fall back to x-api-token so Basic gateway auth can
-  // coexist (browsers only send one Authorization header).
   const supplied = bearer || req.get("x-api-token") || "";
   if (supplied !== API_TOKEN) {
     return res.status(401).json({ error: "Unauthorized" });

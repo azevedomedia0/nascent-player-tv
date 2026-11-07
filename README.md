@@ -68,7 +68,8 @@ never commit a real `.env` (it is gitignored).
 | `HOST` | `127.0.0.1` | Interface the server binds to. Only set `HOST=0.0.0.0` behind a reverse proxy that adds authentication — see [Security](#security). |
 | `PORT` | `3000` | Port the server listens on. |
 | `APP_URL` | — | Public URL of the deployment, used for self-referential links. |
-| `NASCENT_API_TOKEN` | — | Optional shared token. When set, mutating API calls (`POST` / `DELETE` under `/api`) and the sensitive GET endpoints (`/api/stremio/proxy`, `/api/stream/benchmark`) require `Authorization: Bearer <token>` or `x-api-token: <token>`. |
+| `NASCENT_GATEWAY_PASSWORD` | — | Enables built-in HTTP Basic Auth for the whole app. Prefer this for remote browser access. |
+| `NASCENT_API_TOKEN` | — | Optional token for non-browser clients (curl/scripts). When set and the gateway is off, mutating `/api` calls and sensitive GETs require `Authorization: Bearer` or `x-api-token`. Do not mirror this into any `VITE_*` variable. |
 | `STREMIO_PROXY_ALLOWLIST` | — | Extra hostnames (comma-separated) the Stremio proxy may fetch, in addition to the bundled addon hosts. Never add a wildcard or an internal host. |
 
 Uploaded files are stored in `./media/` and library state in
@@ -80,10 +81,12 @@ Nascent Player TV is a **local media server**. It is safe on localhost
 (`HOST=127.0.0.1`, the default). It has **no built-in login**, so do
 **not** expose it directly to the internet or an untrusted network.
 
-To access it remotely, put it behind a reverse proxy (Caddy, nginx,
-Cloudflare Tunnel, Tailscale, etc.) that adds authentication, and set
-`NASCENT_API_TOKEN` as a second layer. Do not just set `HOST=0.0.0.0`
-and port-forward it.
+To access it remotely, enable the built-in gateway
+(`NASCENT_GATEWAY_PASSWORD`) or put the app behind a reverse proxy
+(Caddy, nginx, Cloudflare Tunnel, Tailscale, etc.) that adds
+authentication. Do not just set `HOST=0.0.0.0` and port-forward it.
+Do not put secrets in `VITE_*` env vars — they are baked into the
+browser bundle.
 
 The server hardens its endpoints with an SSRF allowlist for the
 Stremio proxy, path-traversal protection for local files, whitelisted

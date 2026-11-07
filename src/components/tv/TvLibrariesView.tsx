@@ -420,7 +420,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-500/15 border border-sky-400/30 text-sky-400 flex items-center justify-center shadow-lg shadow-sky-500/10">
+            <div className="w-10 h-10 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-400 flex items-center justify-center shadow-lg shadow-sky-500/10">
               <HardDrive className="w-5 h-5" />
             </div>
             <div>
@@ -612,23 +612,23 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
       )}
 
       {/* EXCLUSIVE SEARCH BAR: LOCAL MEDIA & SHARED FILES ONLY */}
-      <div className="w-full rounded-2xl bg-[#1a1024]/90 border border-purple-500/25 p-3 sm:p-3.5 shadow-xl shadow-purple-950/30 backdrop-blur-md transition-all focus-within:border-purple-400/50 focus-within:ring-2 focus-within:ring-purple-500/25">
+      <div className="theme-panel w-full rounded-2xl border p-3 sm:p-3.5 backdrop-blur-md transition-all">
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
           <div className="relative flex-1 flex items-center">
-            <Search className="absolute left-4 w-4 h-4 text-purple-300 pointer-events-none" />
+            <Search className="absolute left-4 w-4 h-4 theme-accent-icon pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search local storage & shared files by title, codec, audio, or peer..."
-              className="w-full pl-11 pr-24 py-2.5 rounded-full bg-black/40 border border-purple-500/15 hover:border-purple-400/30 focus:border-purple-400 text-sm text-white placeholder-zinc-500 focus:outline-none transition-all font-sans"
+              className="theme-input w-full pl-11 pr-24 py-2.5 rounded-full border text-sm text-white placeholder-zinc-500 focus:outline-none transition-all font-sans"
               aria-label="Search local and shared media files"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3.5 p-1 text-zinc-400 hover:text-purple-200 rounded-lg hover:bg-purple-500/10 transition-colors cursor-pointer"
+                className="theme-clear absolute right-3.5 p-1 text-zinc-400 rounded-lg transition-colors cursor-pointer"
                 title="Clear search"
                 aria-label="Clear search"
               >
@@ -639,10 +639,10 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
 
           {/* Combined Pill-shape Segmented Scope Control */}
           <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
-            <span className="text-[11px] font-mono text-purple-300/80 uppercase tracking-wider font-semibold mr-0.5 hidden sm:inline">
+            <span className="theme-accent-muted text-[11px] font-mono uppercase tracking-wider font-semibold mr-0.5 hidden sm:inline">
               Scope:
             </span>
-            <div className="inline-flex items-center p-1 rounded-full bg-purple-950/50 border border-purple-500/20 shadow-inner backdrop-blur-sm">
+            <div className="theme-segment inline-flex items-center p-1 rounded-full border shadow-inner backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => {
@@ -652,7 +652,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   activeLibraryTab === 'all' && !selectedPeerId
                     ? 'bg-white text-black font-bold shadow-md'
-                    : 'text-purple-200/70 hover:text-white hover:bg-purple-500/15'
+                    : 'theme-segment-idle'
                 }`}
               >
                 All
@@ -666,8 +666,8 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                 title={`${localMediaFiles.length} local master files`}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   activeLibraryTab === 'masters' && !selectedPeerId
-                    ? 'bg-sky-500 text-black font-bold shadow-md shadow-sky-500/25'
-                    : 'text-purple-200/70 hover:text-white hover:bg-purple-500/15'
+                    ? 'theme-segment-active font-bold shadow-md'
+                    : 'theme-segment-idle'
                 }`}
               >
                 Local Files
@@ -681,7 +681,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   activeLibraryTab === 'peers'
                     ? 'bg-pink-500 text-white font-bold shadow-md shadow-pink-500/25'
-                    : 'text-purple-200/70 hover:text-white hover:bg-purple-500/15'
+                    : 'theme-segment-idle'
                 }`}
               >
                 Shared Files
@@ -689,8 +689,8 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
             </div>
 
             {searchQuery.trim() && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-400/20 text-[11px] font-mono text-purple-100 ml-1">
-                <span className="text-purple-300 font-bold">{filteredLocalFiles.length}</span>
+              <div className="theme-chip flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-mono text-zinc-200 ml-1">
+                <span className="theme-accent-icon font-bold">{filteredLocalFiles.length}</span>
                 <span>matches</span>
               </div>
             )}
@@ -772,7 +772,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter titles, codecs, audio..."
-              className="w-full pl-9 pr-8 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400 transition-all font-mono"
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400 transition-all font-sans"
             />
             {searchQuery && (
               <button

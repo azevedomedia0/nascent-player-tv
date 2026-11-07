@@ -2,12 +2,21 @@
 @import "tailwindcss";
 
 @layer base {
-  :root {
+  :root,
+  [data-theme="aurora"] {
     --tv-bg: #0c101c;
     --tv-surface: rgba(22, 18, 36, 0.75);
     --tv-surface-elevated: rgba(30, 24, 48, 0.85);
     --tv-accent: #38bdf8;
     --tv-accent-glow: rgba(56, 189, 248, 0.4);
+    --app-bg-color: #0c101c;
+    --app-bg-image:
+      radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
+      radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
+      radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.28) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 70% at 92% 95%, rgba(253, 224, 71, 0.18) 0%, transparent 55%),
+      radial-gradient(ellipse 95% 85% at 50% 50%, rgba(168, 85, 247, 0.20) 0%, transparent 70%),
+      linear-gradient(135deg, #0b1120 0%, #170d24 25%, #220b1f 50%, #0a1e19 75%, #1c1c0a 100%);
 
     /* Authentic logo iridescent color stops sampled from app-logo.png */
     --logo-pink: #f76e9d;
@@ -19,15 +28,65 @@
     --logo-purple: #818cf8;
   }
 
+  [data-theme="midnight"] {
+    --tv-bg: #020617;
+    --tv-surface: rgba(15, 30, 64, 0.82);
+    --tv-surface-elevated: rgba(23, 42, 84, 0.9);
+    --tv-accent: #3b82f6;
+    --tv-accent-glow: rgba(59, 130, 246, 0.4);
+    --app-bg-color: #020617;
+    --app-bg-image:
+      radial-gradient(ellipse 85% 65% at 8% 0%, rgba(37, 99, 235, 0.28) 0%, transparent 55%),
+      radial-gradient(ellipse 75% 55% at 92% 8%, rgba(29, 78, 216, 0.22) 0%, transparent 50%),
+      radial-gradient(ellipse 95% 70% at 50% 100%, rgba(30, 64, 175, 0.38) 0%, transparent 60%),
+      linear-gradient(160deg, #01040f 0%, #0a1634 35%, #0c1c4a 65%, #020617 100%);
+  }
+
+  [data-theme="cinema"] {
+    --tv-bg: #12030a;
+    --tv-surface: rgba(48, 12, 28, 0.82);
+    --tv-surface-elevated: rgba(72, 16, 40, 0.9);
+    --tv-accent: #f43f5e;
+    --tv-accent-glow: rgba(244, 63, 94, 0.4);
+    --app-bg-color: #12030a;
+    --app-bg-image:
+      radial-gradient(ellipse 80% 60% at 12% 0%, rgba(244, 63, 94, 0.28) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 55% at 92% 10%, rgba(236, 72, 153, 0.22) 0%, transparent 50%),
+      radial-gradient(ellipse 90% 70% at 45% 100%, rgba(159, 18, 57, 0.4) 0%, transparent 60%),
+      linear-gradient(145deg, #0a0206 0%, #2a0a18 35%, #1a0610 70%, #100208 100%);
+  }
+
+  [data-theme="ocean"] {
+    --tv-bg: #04141a;
+    --tv-surface: rgba(8, 28, 34, 0.8);
+    --tv-surface-elevated: rgba(12, 40, 48, 0.9);
+    --tv-accent: #2dd4bf;
+    --tv-accent-glow: rgba(45, 212, 191, 0.35);
+    --app-bg-color: #04141a;
+    --app-bg-image:
+      radial-gradient(ellipse 80% 60% at 8% 0%, rgba(45, 212, 191, 0.2) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 55% at 95% 8%, rgba(14, 165, 233, 0.16) 0%, transparent 50%),
+      radial-gradient(ellipse 90% 70% at 50% 100%, rgba(15, 118, 110, 0.3) 0%, transparent 60%),
+      linear-gradient(155deg, #021016 0%, #062028 40%, #041a22 75%, #030e12 100%);
+  }
+
+  [data-theme="mono"] {
+    --tv-bg: #0a0a0b;
+    --tv-surface: rgba(18, 18, 19, 0.94);
+    --tv-surface-elevated: rgba(26, 26, 28, 0.96);
+    --tv-accent: #737373;
+    --tv-accent-glow: rgba(115, 115, 115, 0.24);
+    --app-bg-color: #0a0a0b;
+    --app-bg-image:
+      radial-gradient(ellipse 70% 50% at 16% 0%, rgba(255, 255, 255, 0.028) 0%, transparent 55%),
+      radial-gradient(ellipse 60% 45% at 88% 10%, rgba(255, 255, 255, 0.018) 0%, transparent 50%),
+      radial-gradient(ellipse 90% 70% at 50% 100%, rgba(0, 0, 0, 0.5) 0%, transparent 60%),
+      linear-gradient(180deg, #101011 0%, #0a0a0b 40%, #070708 75%, #050506 100%);
+  }
+
   body {
-    background-color: #0c101c;
-    background-image: 
-      radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
-      radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
-      radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.28) 0%, transparent 60%),
-      radial-gradient(ellipse 80% 70% at 92% 95%, rgba(253, 224, 71, 0.18) 0%, transparent 55%),
-      radial-gradient(ellipse 95% 85% at 50% 50%, rgba(168, 85, 247, 0.20) 0%, transparent 70%),
-      linear-gradient(135deg, #0b1120 0%, #170d24 25%, #220b1f 50%, #0a1e19 75%, #1c1c0a 100%);
+    background-color: var(--app-bg-color);
+    background-image: var(--app-bg-image);
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;
@@ -103,16 +162,10 @@ header[data-tab] {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Shared movies-tab / app shell background (logo iridescent gradients) */
+/* Shared movies-tab / app shell background (follows data-theme) */
 .nascent-app-bg {
-  background-color: #0c101c;
-  background-image:
-    radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
-    radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
-    radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.28) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 70% at 92% 95%, rgba(253, 224, 71, 0.18) 0%, transparent 55%),
-    radial-gradient(ellipse 95% 85% at 50% 50%, rgba(168, 85, 247, 0.20) 0%, transparent 70%),
-    linear-gradient(135deg, #0b1120 0%, #170d24 25%, #220b1f 50%, #0a1e19 75%, #1c1c0a 100%);
+  background-color: var(--app-bg-color);
+  background-image: var(--app-bg-image);
   background-attachment: fixed;
   background-size: cover;
   background-repeat: no-repeat;
@@ -131,19 +184,67 @@ header[data-tab] {
   );
 }
 
-/* Authentic app logo gradient for search tab background */
+/* Search modal follows the active UI theme */
 div#root:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)[data-search-modal="true"],
 [data-search-modal="true"] {
-  background-color: #0c101c !important;
-  background-image:
-    radial-gradient(ellipse 90% 70% at 5% 0%, rgba(56, 189, 248, 0.26) 0%, transparent 60%),
-    radial-gradient(ellipse 75% 65% at 95% 5%, rgba(52, 211, 153, 0.22) 0%, transparent 55%),
-    radial-gradient(ellipse 85% 75% at 8% 98%, rgba(244, 114, 182, 0.28) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 70% at 92% 95%, rgba(253, 224, 71, 0.18) 0%, transparent 55%),
-    radial-gradient(ellipse 95% 85% at 50% 50%, rgba(168, 85, 247, 0.20) 0%, transparent 70%),
-    linear-gradient(135deg, #0b1120 0%, #170d24 25%, #220b1f 50%, #0a1e19 75%, #1c1c0a 100%) !important;
+  background-color: var(--app-bg-color) !important;
+  background-image: var(--app-bg-image) !important;
   background-attachment: fixed !important;
   background-size: cover !important;
   background-repeat: no-repeat !important;
+}
+
+/* Theme-aware panels / chips (follow --tv-* / --app-* vars) */
+.theme-panel {
+  background-color: var(--tv-surface);
+  border-color: color-mix(in srgb, var(--tv-accent) 28%, transparent);
+  box-shadow: 0 18px 36px -16px color-mix(in srgb, var(--app-bg-color) 85%, black);
+}
+.theme-panel:focus-within {
+  border-color: color-mix(in srgb, var(--tv-accent) 55%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tv-accent) 22%, transparent),
+    0 18px 36px -16px color-mix(in srgb, var(--app-bg-color) 85%, black);
+}
+.theme-accent-icon {
+  color: var(--tv-accent);
+}
+.theme-accent-muted {
+  color: color-mix(in srgb, var(--tv-accent) 72%, white);
+  opacity: 0.85;
+}
+.theme-input {
+  background-color: color-mix(in srgb, var(--app-bg-color) 88%, black);
+  border-color: color-mix(in srgb, var(--tv-accent) 18%, transparent);
+}
+.theme-input:hover {
+  border-color: color-mix(in srgb, var(--tv-accent) 35%, transparent);
+}
+.theme-input:focus {
+  border-color: var(--tv-accent);
+}
+.theme-clear:hover {
+  color: color-mix(in srgb, var(--tv-accent) 80%, white);
+  background-color: color-mix(in srgb, var(--tv-accent) 12%, transparent);
+}
+.theme-segment {
+  background-color: color-mix(in srgb, var(--app-bg-color) 92%, black);
+  border-color: color-mix(in srgb, var(--tv-accent) 22%, transparent);
+}
+.theme-segment-idle {
+  color: color-mix(in srgb, var(--tv-accent) 55%, #a1a1aa);
+}
+.theme-segment-idle:hover {
+  color: #fff;
+  background-color: color-mix(in srgb, var(--tv-accent) 14%, transparent);
+}
+.theme-segment-active {
+  background-color: var(--tv-accent);
+  color: #000;
+  box-shadow: 0 8px 18px -6px var(--tv-accent-glow);
+}
+.theme-chip {
+  background-color: color-mix(in srgb, var(--tv-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--tv-accent) 28%, transparent);
 }
 

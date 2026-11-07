@@ -3,7 +3,7 @@ import {
   Search, 
   X, 
   Film, 
-  ArrowLeft, 
+  Undo2, 
   Bookmark, 
   ListPlus, 
   FolderPlus, 
@@ -649,12 +649,11 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
               stopVoiceSearch();
               onClose();
             }}
-            className="shrink-0 h-[42px] flex items-center gap-2 px-5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white font-medium text-sm border border-white/15 focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all cursor-pointer"
-            aria-label="Back"
-            title="Back"
+            className="shrink-0 w-[42px] h-[42px] flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-95 border border-white/15 focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all cursor-pointer"
+            aria-label="Go back"
+            title="Go back"
           >
-            <ArrowLeft className="w-5 h-5 text-sky-400" />
-            <span>Back</span>
+            <Undo2 className="w-5 h-5 text-sky-400" />
           </button>
 
           {/* Search Input Box - 25% Shorter (75% width) */}
