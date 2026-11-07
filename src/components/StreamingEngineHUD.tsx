@@ -10,26 +10,21 @@ import {
   Cpu,
   Gauge,
   Wifi,
-  Sliders,
+  X,
   Play,
   RotateCcw,
   CheckCircle2,
   AlertTriangle,
-  X,
-  Layers,
-  Sparkles,
-  TrendingUp,
-  HardDrive,
-  Timer
+  Timer,
+  Sliders,
 } from 'lucide-react';
 import {
   StreamingEngine,
   StreamEngineTelemetry,
   StreamingQuality,
-  NetworkCondition,
   TranscodeCodec,
   QUALITY_LADDER,
-  BenchmarkResult
+  BenchmarkResult,
 } from '../lib/streamingEngine';
 
 interface StreamingEngineHUDProps {
@@ -39,16 +34,34 @@ interface StreamingEngineHUDProps {
   accentColor?: string;
 }
 
+function formatMbps(v: number | null): string {
+  if (v === null) return '—';
+  return v < 10 ? v.toFixed(2) : v.toFixed(1);
+}
+
+function formatMs(v: number | null): string {
+  if (v === null) return '—';
+  return String(v);
+}
+
+function formatBytes(v: number | null): string {
+  if (v === null) return '—';
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  return `${(v / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
   engine,
   isOpen,
   onClose,
-  accentColor = '#ffa033'
+  accentColor = '#ffa033',
 }) => {
   const [telemetry, setTelemetry] = useState<StreamEngineTelemetry>(() => engine.getTelemetry());
-  const [activeTab, setActiveTab] = useState<'overview' | 'abr' | 'hardware' | 'network' | 'benchmark'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'quality' | 'hardware' | 'benchmark'>('overview');
   const [isBenchmarking, setIsBenchmarking] = useState(false);
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
+  const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = engine.subscribe((data) => {
@@ -62,24 +75,28 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
   const handleRunBenchmark = async () => {
     setIsBenchmarking(true);
     setBenchmarkResult(null);
+    setBenchmarkError(null);
     try {
       const result = await engine.runBenchmark();
       setBenchmarkResult(result);
+    } catch (err) {
+      setBenchmarkError(err instanceof Error ? err.message : 'Benchmark failed');
     } finally {
       setIsBenchmarking(false);
     }
   };
 
+  const idle = !telemetry.videoAttached;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div 
+      <div
         className="relative w-full max-w-2xl bg-[#111215] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header Bar */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#16171b]">
           <div className="flex items-center gap-3">
-            <div 
+            <div
               className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg"
               style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
             >
@@ -90,13 +107,21 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                 <h2 className="text-white font-bold text-sm tracking-wide">
                   Nascent TurboStream Engine
                 </h2>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  LOW-LATENCY PIPELINE ACTIVE
+                <span
+                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                    idle
+                      ? 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+                      : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${idle ? 'bg-zinc-400' : 'bg-emerald-400 animate-pulse'}`}
+                  />
+                  {idle ? 'IDLE — NO VIDEO' : 'MEASURING'}
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
-                Adaptive Bitrate • Sub-50ms Fast Seek • GPU Hardware Acceleration
+                Measured throughput • Seek latency • Buffer health — no simulated numbers
               </p>
             </div>
           </div>
@@ -110,107 +135,107 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
           </button>
         </div>
 
-        {/* Quick Metrics KPI Ribbons */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 bg-[#0d0e11] border-b border-white/5">
-          {/* Seek Latency */}
           <div className="bg-[#18191e] border border-white/5 rounded-xl p-3 flex flex-col justify-between">
             <div className="flex items-center justify-between text-zinc-400 text-[11px]">
               <span className="flex items-center gap-1 font-medium">
                 <Timer className="w-3 h-3 text-amber-400" /> Seek Latency
               </span>
-              <span className="text-[9px] font-mono text-emerald-400 font-bold">A+</span>
+              <span className="text-[9px] font-mono text-zinc-500 font-bold">measured</span>
             </div>
             <div className="mt-1 flex items-baseline gap-1">
               <span className="text-xl font-bold font-mono text-white">
-                {telemetry.seekLatencyMs}
+                {formatMs(telemetry.seekLatencyMs)}
               </span>
               <span className="text-xs text-zinc-400 font-mono">ms</span>
             </div>
             <span className="text-[10px] text-zinc-500 mt-0.5">
-              {telemetry.fastSeekEnabled ? 'Fast Keyframe Prefetch' : 'Standard'}
+              {telemetry.fastSeekEnabled ? 'Fast seek enabled' : 'Standard seek'}
             </span>
           </div>
 
-          {/* Forward Buffer */}
           <div className="bg-[#18191e] border border-white/5 rounded-xl p-3 flex flex-col justify-between">
             <div className="flex items-center justify-between text-zinc-400 text-[11px]">
               <span className="flex items-center gap-1 font-medium">
                 <Gauge className="w-3 h-3 text-cyan-400" /> Buffer Health
               </span>
-              <span className="text-[9px] font-mono text-cyan-400 font-bold">{telemetry.bufferPercentage}%</span>
+              <span className="text-[9px] font-mono text-cyan-400 font-bold">
+                {idle ? '—' : `${telemetry.bufferPercentage}%`}
+              </span>
             </div>
             <div className="mt-1 flex items-baseline gap-1">
               <span className="text-xl font-bold font-mono text-white">
-                {telemetry.bufferHealthSeconds}
+                {idle ? '—' : telemetry.bufferHealthSeconds}
               </span>
               <span className="text-xs text-zinc-400 font-mono">sec</span>
             </div>
             <div className="w-full h-1 bg-white/10 rounded-full mt-1.5 overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-cyan-400 transition-all duration-300"
-                style={{ width: `${Math.min(100, telemetry.bufferPercentage)}%` }}
+                style={{ width: idle ? '0%' : `${Math.min(100, telemetry.bufferPercentage)}%` }}
               />
             </div>
           </div>
 
-          {/* Network Throughput */}
           <div className="bg-[#18191e] border border-white/5 rounded-xl p-3 flex flex-col justify-between">
             <div className="flex items-center justify-between text-zinc-400 text-[11px]">
               <span className="flex items-center gap-1 font-medium">
                 <Wifi className="w-3 h-3 text-emerald-400" /> Throughput
               </span>
               <span className="text-[9px] font-mono text-emerald-400 uppercase font-bold">
-                {telemetry.networkCondition}
+                {telemetry.estimatedThroughputMbps === null ? 'measuring' : 'measured'}
               </span>
             </div>
             <div className="mt-1 flex items-baseline gap-1">
               <span className="text-xl font-bold font-mono text-white">
-                {telemetry.estimatedThroughputMbps}
+                {formatMbps(telemetry.estimatedThroughputMbps)}
               </span>
               <span className="text-xs text-zinc-400 font-mono">Mbps</span>
             </div>
             <span className="text-[10px] text-zinc-500 mt-0.5">
-              TTFB: {telemetry.ttfbMs}ms
+              TTFB: {formatMs(telemetry.ttfbMs)}
+              {telemetry.ttfbMs !== null ? 'ms' : ''}
             </span>
           </div>
 
-          {/* Hardware Acceleration & FPS */}
           <div className="bg-[#18191e] border border-white/5 rounded-xl p-3 flex flex-col justify-between">
             <div className="flex items-center justify-between text-zinc-400 text-[11px]">
               <span className="flex items-center gap-1 font-medium">
-                <Cpu className="w-3 h-3 text-purple-400" /> GPU Decoder
+                <Cpu className="w-3 h-3 text-purple-400" /> Decoder
               </span>
               <span className="text-[9px] font-mono text-emerald-400 font-bold">
-                {telemetry.droppedFrames === 0 ? '0 Drops' : `${telemetry.droppedFrames} Drops`}
+                {idle
+                  ? '—'
+                  : telemetry.droppedFrames === 0
+                    ? '0 drops'
+                    : `${telemetry.droppedFrames} drops`}
               </span>
             </div>
             <div className="mt-1 flex items-baseline gap-1">
               <span className="text-xl font-bold font-mono text-white">
-                {telemetry.fps}
+                {telemetry.fps === null ? '—' : telemetry.fps}
               </span>
               <span className="text-xs text-zinc-400 font-mono">FPS</span>
             </div>
             <span className="text-[10px] text-zinc-500 truncate mt-0.5" title={telemetry.hwDecoderName}>
-              {telemetry.hwAccelerated ? 'Hardware NVDEC' : 'Software'}
+              {telemetry.hwDecoderName}
             </span>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
         <div className="flex items-center gap-1 px-6 border-b border-white/10 bg-[#141519] overflow-x-auto text-xs">
           {[
-            { id: 'overview', label: 'Engine Overview', icon: Activity },
-            { id: 'abr', label: 'Adaptive Bitrate (ABR)', icon: TrendingUp },
-            { id: 'hardware', label: 'Hardware Acceleration', icon: Cpu },
-            { id: 'network', label: 'Network Simulator', icon: Wifi },
-            { id: 'benchmark', label: 'Diagnostics & Benchmark', icon: Zap },
+            { id: 'overview', label: 'Overview', icon: Activity },
+            { id: 'quality', label: 'Quality Preference', icon: Sliders },
+            { id: 'hardware', label: 'Hardware', icon: Cpu },
+            { id: 'benchmark', label: 'Benchmark', icon: Zap },
           ].map((t) => {
             const Icon = t.icon;
             const isCurrent = activeTab === t.id;
             return (
               <button
                 key={t.id}
-                onClick={() => setActiveTab(t.id as any)}
+                onClick={() => setActiveTab(t.id as typeof activeTab)}
                 className={`py-3 px-3 font-semibold transition border-b-2 flex items-center gap-1.5 shrink-0 cursor-pointer ${
                   isCurrent
                     ? 'text-white border-amber-400'
@@ -225,60 +250,69 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
           })}
         </div>
 
-        {/* Main Content View */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-left">
-          {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-5">
               <div className="bg-[#18191f] border border-white/5 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
                     <Zap className="w-4 h-4 text-amber-400" />
-                    Ultra-Low Latency & Fast Seek Architecture
+                    Live playback telemetry
                   </h3>
-                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-semibold">
-                    Zero Buffering Jitter
+                  <span className="text-[10px] font-mono text-zinc-400 bg-white/5 px-2 py-0.5 rounded border border-white/10 font-semibold">
+                    {idle ? 'Attach a video to measure' : 'Values update every ~600ms'}
                   </span>
                 </div>
                 <p className="text-xs text-zinc-300 leading-relaxed">
-                  The IINA streaming engine replaces standard continuous linear buffering with 
-                  predictive byte-range chunk pipelining. Initial seek segments are requested in compact 
-                  256KB keyframe-aligned bursts, allowing decoders to render keyframes in under 50ms, while 
-                  steady playback seamlessly scales to high-throughput 2MB chunks.
+                  Throughput and TTFB come from Performance Resource Timing and optional Range
+                  probes against the active stream URL. Bytes transferred are accumulated from
+                  those real transfers only. Seek latency is measured between seeking and seeked
+                  events on the video element.
                 </p>
 
                 <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
-                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-bold font-mono">Bandwidth Optimization</span>
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-bold font-mono">
+                      Bytes transferred
+                    </span>
                     <span className="text-emerald-400 font-bold text-sm font-mono mt-0.5 block">
-                      {telemetry.bandwidthSavedPercentage}% Data Conserved
+                      {formatBytes(telemetry.bytesTransferred)}
                     </span>
-                    <span className="text-[10px] text-zinc-400">Avoids blind downstream buffering</span>
+                    <span className="text-[10px] text-zinc-400">measured</span>
                   </div>
                   <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
-                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-bold font-mono">Current Bitrate Tier</span>
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-bold font-mono">
+                      Quality preference
+                    </span>
                     <span className="text-white font-bold text-sm font-mono mt-0.5 block">
-                      {telemetry.currentBitrateKbps} kbps ({telemetry.effectiveQuality})
+                      {telemetry.qualityPreference}
+                      {telemetry.currentBitrateKbps !== null
+                        ? ` · ${telemetry.currentBitrateKbps} kbps`
+                        : ''}
                     </span>
-                    <span className="text-[10px] text-zinc-400">Mode: {telemetry.currentQuality.toUpperCase()}</span>
+                    <span className="text-[10px] text-zinc-400">label only — no HLS ladder yet</span>
                   </div>
                   <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
-                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-bold font-mono">Cached Keyframe Segments</span>
-                    <span className="text-cyan-400 font-bold text-sm font-mono mt-0.5 block">
-                      {telemetry.cachedSegmentsCount} Segments
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-bold font-mono">
+                      Engine state
                     </span>
-                    <span className="text-[10px] text-zinc-400">Ring-buffer memory pool</span>
+                    <span className="text-cyan-400 font-bold text-sm font-mono mt-0.5 block uppercase">
+                      {telemetry.state}
+                    </span>
+                    <span className="text-[10px] text-zinc-400">
+                      {telemetry.bufferedRanges.length} buffered range
+                      {telemetry.bufferedRanges.length === 1 ? '' : 's'}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Fast Seek Toggle & Target Buffer Slider */}
               <div className="bg-[#18191f] border border-white/5 rounded-xl p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-sm font-bold text-white">Predictive Fast-Seek Optimization</h4>
+                    <h4 className="text-sm font-bold text-white">Fast-seek preference</h4>
                     <p className="text-xs text-zinc-400">
-                      Pre-warms GOP boundaries and executes keyframe aligned jumps on scrub events.
+                      Uses the browser fastSeek API when available; otherwise currentTime.
                     </p>
                   </div>
                   <button
@@ -289,14 +323,16 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                         : 'bg-white/5 text-zinc-400 border-white/5'
                     }`}
                   >
-                    {telemetry.fastSeekEnabled ? 'Enabled (Fast Seek)' : 'Disabled'}
+                    {telemetry.fastSeekEnabled ? 'Enabled' : 'Disabled'}
                   </button>
                 </div>
 
                 <div className="pt-3 border-t border-white/5">
                   <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="text-zinc-300 font-medium">Forward Buffer Target Duration</span>
-                    <span className="text-amber-400 font-mono font-bold">{telemetry.targetBufferSeconds} seconds</span>
+                    <span className="text-zinc-300 font-medium">Forward buffer target</span>
+                    <span className="text-amber-400 font-mono font-bold">
+                      {telemetry.targetBufferSeconds} seconds
+                    </span>
                   </div>
                   <input
                     type="range"
@@ -304,71 +340,39 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                     max="60"
                     step="5"
                     value={telemetry.targetBufferSeconds}
-                    onChange={(e) => engine.setTargetBufferSeconds(parseInt(e.target.value))}
+                    onChange={(e) => engine.setTargetBufferSeconds(parseInt(e.target.value, 10))}
                     className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
                   />
-                  <div className="flex justify-between text-[10px] text-zinc-500 mt-1 font-mono">
-                    <span>5s (Ultra-Low Latency)</span>
-                    <span>25s (Recommended Balanced)</span>
-                    <span>60s (Maximum Resilience)</span>
-                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 2: ADAPTIVE BITRATE (ABR) */}
-          {activeTab === 'abr' && (
+          {activeTab === 'quality' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between bg-[#18191f] border border-white/5 rounded-xl p-4">
+              <div className="flex items-start gap-3 bg-[#18191f] border border-amber-500/20 rounded-xl p-4">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-sm font-bold text-white">Dynamic Bitrate Adaptation (ABR)</h4>
-                  <p className="text-xs text-zinc-400">
-                    Continuously adapts streaming resolution using real-time EWMA throughput and buffer health.
+                  <h4 className="text-sm font-bold text-white">Manual preference only</h4>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Playback is a single file — there are no alternate renditions to switch.
+                    Selecting a tier updates the preference label only. Real HLS/MSE adaptive
+                    bitrate is a follow-up.
                   </p>
                 </div>
-                <button
-                  onClick={() => engine.setAdaptiveBitrateEnabled(!telemetry.adaptiveBitrateEnabled)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${
-                    telemetry.adaptiveBitrateEnabled
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                      : 'bg-white/5 text-zinc-400 border-white/5'
-                  }`}
-                >
-                  {telemetry.adaptiveBitrateEnabled ? 'ABR Active' : 'Manual Lock'}
-                </button>
               </div>
 
-              {/* Quality Ladder Selection */}
               <div className="space-y-2">
                 <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider block font-mono">
-                  Select Target Bitrate Tier
+                  Preferred quality label
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    onClick={() => engine.setQualityMode('auto')}
-                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                      telemetry.currentQuality === 'auto'
-                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 ring-1 ring-amber-500/30'
-                        : 'bg-[#18191f] border-white/5 text-zinc-300 hover:border-white/20'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold">Auto (Adaptive)</span>
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    </div>
-                    <p className="text-[10px] text-zinc-400 mt-1">
-                      Dynamically chooses {telemetry.effectiveQuality} based on network
-                    </p>
-                  </button>
-
                   {QUALITY_LADDER.map((profile) => {
-                    const isSelected = telemetry.currentQuality === profile.id;
-                    const isEffective = telemetry.effectiveQuality === profile.id;
+                    const isSelected = telemetry.qualityPreference === profile.id;
                     return (
                       <button
                         key={profile.id}
-                        onClick={() => engine.setQualityMode(profile.id)}
+                        onClick={() => engine.setQualityMode(profile.id as StreamingQuality)}
                         className={`p-3 rounded-xl border text-left transition cursor-pointer relative ${
                           isSelected
                             ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 ring-1 ring-amber-500/30'
@@ -377,9 +381,9 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold">{profile.label}</span>
-                          {isEffective && (
+                          {isSelected && (
                             <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono font-bold">
-                              PLAYING
+                              PREFERRED
                             </span>
                           )}
                         </div>
@@ -394,7 +398,6 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                 </div>
               </div>
 
-              {/* Ladder Details Table */}
               <div className="bg-[#18191f] border border-white/5 rounded-xl p-4 overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
@@ -408,7 +411,14 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                   </thead>
                   <tbody className="divide-y divide-white/5 font-mono text-zinc-300">
                     {QUALITY_LADDER.map((row) => (
-                      <tr key={row.id} className={telemetry.effectiveQuality === row.id ? 'bg-amber-500/5 text-amber-300' : ''}>
+                      <tr
+                        key={row.id}
+                        className={
+                          telemetry.qualityPreference === row.id
+                            ? 'bg-amber-500/5 text-amber-300'
+                            : ''
+                        }
+                      >
                         <td className="py-2 font-bold">{row.label}</td>
                         <td className="py-2 text-zinc-400">{row.resolution}</td>
                         <td className="py-2">{row.targetBitrateKbps} kbps</td>
@@ -422,7 +432,6 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
             </div>
           )}
 
-          {/* TAB 3: HARDWARE ACCELERATION */}
           {activeTab === 'hardware' && (
             <div className="space-y-4">
               <div className="bg-[#18191f] border border-white/5 rounded-xl p-4 space-y-3">
@@ -430,46 +439,67 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                   <div className="flex items-center gap-2.5">
                     <Cpu className="w-5 h-5 text-purple-400" />
                     <div>
-                      <h4 className="text-sm font-bold text-white">GPU Hardware Decoding Pipeline</h4>
+                      <h4 className="text-sm font-bold text-white">Hardware decode detection</h4>
                       <p className="text-xs text-zinc-400">{telemetry.hwDecoderName}</p>
                     </div>
                   </div>
-                  <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    ZERO-COPY GPU ACTIVE
+                  <span
+                    className={`text-xs font-mono font-bold px-2.5 py-1 rounded border ${
+                      telemetry.hwAccelerated === true
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                        : telemetry.hwAccelerated === false
+                          ? 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'
+                          : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                    }`}
+                  >
+                    {telemetry.hwAccelerated === true
+                      ? 'HW EFFICIENT'
+                      : telemetry.hwAccelerated === false
+                        ? 'SOFTWARE / INEFFICIENT'
+                        : 'DETECTING…'}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-white/5 text-xs">
                   <div className="bg-black/40 p-2.5 rounded-lg">
-                    <span className="text-[10px] text-zinc-500 block font-mono">Decoded Frames</span>
-                    <span className="font-mono font-bold text-white text-sm mt-0.5 block">{telemetry.totalFrames || 1840}</span>
+                    <span className="text-[10px] text-zinc-500 block font-mono">Decoded frames</span>
+                    <span className="font-mono font-bold text-white text-sm mt-0.5 block">
+                      {idle ? '—' : telemetry.totalFrames}
+                    </span>
                   </div>
                   <div className="bg-black/40 p-2.5 rounded-lg">
-                    <span className="text-[10px] text-zinc-500 block font-mono">Dropped Frames</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm mt-0.5 block">{telemetry.droppedFrames}</span>
+                    <span className="text-[10px] text-zinc-500 block font-mono">Dropped frames</span>
+                    <span className="font-mono font-bold text-emerald-400 text-sm mt-0.5 block">
+                      {idle ? '—' : telemetry.droppedFrames}
+                    </span>
                   </div>
                   <div className="bg-black/40 p-2.5 rounded-lg">
-                    <span className="text-[10px] text-zinc-500 block font-mono">Smoothness Index</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm mt-0.5 block">100.0%</span>
+                    <span className="text-[10px] text-zinc-500 block font-mono">Drop rate</span>
+                    <span className="font-mono font-bold text-emerald-400 text-sm mt-0.5 block">
+                      {telemetry.dropRatePercentage === null
+                        ? '—'
+                        : `${telemetry.dropRatePercentage}%`}
+                    </span>
                   </div>
                   <div className="bg-black/40 p-2.5 rounded-lg">
-                    <span className="text-[10px] text-zinc-500 block font-mono">Async Decoder</span>
-                    <span className="font-mono font-bold text-purple-300 text-sm mt-0.5 block">Enabled</span>
+                    <span className="text-[10px] text-zinc-500 block font-mono">Corrupted</span>
+                    <span className="font-mono font-bold text-purple-300 text-sm mt-0.5 block">
+                      {idle ? '—' : telemetry.corruptedFrames}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Transcode Codec Selector */}
               <div className="space-y-2">
                 <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider block font-mono">
-                  Transcoding Profile & Media Codec
+                  Codec preference (label)
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { id: 'h264', label: 'H.264 / AVC', desc: 'Max Compatibility • Low Power' },
-                    { id: 'av1', label: 'AV1 (Next-Gen)', desc: '35% Higher Compression' },
-                    { id: 'hevc', label: 'HEVC / H.265', desc: 'Optimized 4K HDR Stream' },
-                    { id: 'vp9', label: 'Google VP9', desc: 'High Efficiency Web Codec' },
+                    { id: 'h264', label: 'H.264 / AVC', desc: 'Max compatibility' },
+                    { id: 'av1', label: 'AV1', desc: 'Next-gen compression' },
+                    { id: 'hevc', label: 'HEVC / H.265', desc: '4K / HDR profile' },
+                    { id: 'vp9', label: 'VP9', desc: 'Web codec' },
                   ].map((c) => (
                     <button
                       key={c.id}
@@ -481,7 +511,9 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                       }`}
                     >
                       <span className="text-xs font-bold block">{c.label}</span>
-                      <span className="text-[10px] text-zinc-400 block mt-1 leading-tight">{c.desc}</span>
+                      <span className="text-[10px] text-zinc-400 block mt-1 leading-tight">
+                        {c.desc}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -489,66 +521,26 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
             </div>
           )}
 
-          {/* TAB 4: NETWORK SIMULATOR */}
-          {activeTab === 'network' && (
-            <div className="space-y-4">
-              <div className="bg-[#18191f] border border-white/5 rounded-xl p-4">
-                <h4 className="text-sm font-bold text-white mb-1">Network Conditioning & Stress Testing</h4>
-                <p className="text-xs text-zinc-400">
-                  Simulate bandwidth fluctuations to watch the Adaptive Bitrate ladder dynamically downscale or upscale in real-time.
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-4">
-                  {[
-                    { id: 'unlimited', label: 'Gigabit Fiber (100 Mbps)', ttfb: '16ms', desc: 'Pristine 1080p60 Ultra stream' },
-                    { id: '4g', label: '4G LTE Mobile (25 Mbps)', ttfb: '38ms', desc: 'Standard mobile broadband connection' },
-                    { id: '3g', label: '3G Cellular (3.5 Mbps)', ttfb: '95ms', desc: 'Downscales to 480p to preserve playback' },
-                    { id: 'congested', label: 'Congested / Poor (900 Kbps)', ttfb: '240ms', desc: 'Emergency low-bitrate 240p fallback' },
-                  ].map((net) => {
-                    const isCurrent = telemetry.networkCondition === net.id;
-                    return (
-                      <button
-                        key={net.id}
-                        onClick={() => engine.setNetworkCondition(net.id as NetworkCondition)}
-                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                          isCurrent
-                            ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300 ring-1 ring-cyan-500/30'
-                            : 'bg-black/30 border-white/5 text-zinc-300 hover:border-white/20'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold">{net.label}</span>
-                          <span className="text-[10px] font-mono text-zinc-400">TTFB: {net.ttfb}</span>
-                        </div>
-                        <p className="text-[10px] text-zinc-400 mt-1">{net.desc}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: BENCHMARK */}
           {activeTab === 'benchmark' && (
             <div className="space-y-4">
               <div className="bg-[#18191f] border border-white/5 rounded-xl p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h4 className="text-sm font-bold text-white">Streaming Engine Diagnostics Suite</h4>
+                    <h4 className="text-sm font-bold text-white">Measured seek benchmark</h4>
                     <p className="text-xs text-zinc-400">
-                      Executes rapid sequential keyframe seek probes, measures decoder responsiveness, and grades stream performance.
+                      Performs real seeks on the attached video and times seeking → seeked.
+                      Score is derived from measured average latency only.
                     </p>
                   </div>
                   <button
                     onClick={handleRunBenchmark}
-                    disabled={isBenchmarking}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs rounded-xl shadow-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    disabled={isBenchmarking || idle}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs rounded-xl shadow-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
                   >
                     {isBenchmarking ? (
                       <>
                         <RotateCcw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Testing Engine...</span>
+                        <span>Measuring…</span>
                       </>
                     ) : (
                       <>
@@ -559,12 +551,26 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
                   </button>
                 </div>
 
+                {idle && (
+                  <p className="mt-3 text-xs text-amber-300/90 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Attach and load a video before running the benchmark.
+                  </p>
+                )}
+
+                {benchmarkError && (
+                  <p className="mt-3 text-xs text-red-300 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    {benchmarkError}
+                  </p>
+                )}
+
                 {benchmarkResult && (
                   <div className="mt-5 p-4 rounded-xl bg-black/40 border border-amber-500/30 space-y-3 animate-in fade-in duration-200">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                        <span className="font-bold text-white text-sm">Diagnostic Benchmark Score</span>
+                        <span className="font-bold text-white text-sm">Measured score</span>
                       </div>
                       <span className="text-2xl font-extrabold font-mono text-amber-400 px-3 py-1 bg-amber-500/10 rounded-lg border border-amber-500/30">
                         {benchmarkResult.score}
@@ -575,20 +581,30 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs font-mono">
                       <div className="bg-white/5 p-2 rounded">
-                        <span className="text-[10px] text-zinc-500 block">Avg Seek</span>
-                        <span className="text-amber-300 font-bold text-sm">{benchmarkResult.avgSeekLatencyMs}ms</span>
+                        <span className="text-[10px] text-zinc-500 block">Avg seek</span>
+                        <span className="text-amber-300 font-bold text-sm">
+                          {benchmarkResult.avgSeekLatencyMs}ms
+                        </span>
                       </div>
                       <div className="bg-white/5 p-2 rounded">
                         <span className="text-[10px] text-zinc-500 block">Min / Max</span>
-                        <span className="text-zinc-300 font-bold text-sm">{benchmarkResult.minSeekLatencyMs} / {benchmarkResult.maxSeekLatencyMs}ms</span>
+                        <span className="text-zinc-300 font-bold text-sm">
+                          {benchmarkResult.minSeekLatencyMs} / {benchmarkResult.maxSeekLatencyMs}ms
+                        </span>
                       </div>
                       <div className="bg-white/5 p-2 rounded">
                         <span className="text-[10px] text-zinc-500 block">Throughput</span>
-                        <span className="text-emerald-300 font-bold text-sm">{benchmarkResult.estimatedThroughputMbps} Mbps</span>
+                        <span className="text-emerald-300 font-bold text-sm">
+                          {benchmarkResult.estimatedThroughputMbps === null
+                            ? '—'
+                            : `${formatMbps(benchmarkResult.estimatedThroughputMbps)} Mbps`}
+                        </span>
                       </div>
                       <div className="bg-white/5 p-2 rounded">
-                        <span className="text-[10px] text-zinc-500 block">Hardware Grade</span>
-                        <span className="text-purple-300 font-bold text-sm truncate">Zero-Copy GPU</span>
+                        <span className="text-[10px] text-zinc-500 block">Hardware</span>
+                        <span className="text-purple-300 font-bold text-sm truncate">
+                          {benchmarkResult.hwAccelerationGrade}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -598,10 +614,14 @@ export const StreamingEngineHUD: React.FC<StreamingEngineHUDProps> = ({
           )}
         </div>
 
-        {/* Footer info */}
         <div className="px-6 py-3 bg-[#0d0e11] border-t border-white/5 flex items-center justify-between text-[11px] text-zinc-400">
           <span className="font-mono">
-            ENGINE STATUS: <strong className="text-emerald-400">ONLINE</strong> (H.264 / AV1 HW PIPELINE)
+            STATUS:{' '}
+            <strong className={idle ? 'text-zinc-400' : 'text-emerald-400'}>
+              {idle ? 'IDLE' : telemetry.state.toUpperCase()}
+            </strong>
+            {' · '}
+            preference {telemetry.qualityPreference} / {telemetry.codec}
           </span>
           <button
             onClick={onClose}
