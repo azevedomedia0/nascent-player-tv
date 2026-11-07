@@ -488,12 +488,13 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
           <div className="flex flex-wrap items-center gap-3.5 my-5">
             {/* Watch Now button triggers Stremio/Nuvio streaming platforms list */}
             <button
+              type="button"
               onClick={() => {
                 setIsStreamSelectorOpen(true);
               }}
-              className="flex items-center gap-2.5 px-7 py-3.5 rounded-full bg-white hover:bg-sky-400 text-black font-extrabold text-sm shadow-xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="flex items-center gap-2.5 px-6 sm:px-7 py-2.5 sm:py-3 rounded-full bg-white hover:bg-zinc-200 text-black font-bold text-xs sm:text-sm tracking-wide shadow-xl shadow-black/50 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-white active:scale-95"
             >
-              <Play className="w-4 h-4 fill-current ml-0.5" />
+              <Play className="w-4 h-4 fill-black text-black ml-0.5" />
               <span>Watch Now</span>
             </button>
 
@@ -541,7 +542,8 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
             </button>
           </div>
 
-          {/* Season and Episode List Component */}
+          {/* Season and Episode List — TV series only */}
+          {isTvSeries(movie) && (
           <div className="my-4 p-5 rounded-3xl bg-white/[0.04] border border-white/10 backdrop-blur-md">
             {/* Header with Season Selector Tabs */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-white/10">
@@ -730,6 +732,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
               </div>
             )}
           </div>
+          )}
 
           {/* Synopsis */}
           <div className="my-3">

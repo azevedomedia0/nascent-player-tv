@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   Settings, 
   Sliders, 
-  Zap, 
   Puzzle, 
   Wifi, 
   Volume2, 
@@ -34,13 +33,14 @@ import {
   ChevronDown,
   Layers,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Globe
 } from 'lucide-react';
+import { apiFetch } from '../../lib/apiAuth';
 
 interface TvSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenStreamingHUD: () => void;
   onToggleRemote?: () => void;
   isRemoteOpen?: boolean;
   onOpenPlugins?: () => void;
@@ -64,7 +64,6 @@ export type SettingCategory =
   | 'audio-video' 
   | 'playback' 
   | 'subtitles' 
-  | 'streaming' 
   | 'storage' 
   | 'network';
 
@@ -94,7 +93,6 @@ interface UserProfile {
 export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   isOpen,
   onClose,
-  onOpenStreamingHUD,
   onToggleRemote,
   isRemoteOpen = false,
   onOpenPlugins,
@@ -238,8 +236,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   ]);
 
   // Audio / Video & Existing Preferences
-  const [bufferSize, setBufferSize] = useState('512MB');
-  const [hardwareAccel, setHardwareAccel] = useState(true);
   const [ambilightMode, setAmbilightMode] = useState('vibrant');
   const [nightMode, setNightMode] = useState(false);
   const [audioPassthrough, setAudioPassthrough] = useState(true);
@@ -257,10 +253,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [subtitleColor, setSubtitleColor] = useState<'yellow' | 'white' | 'cyan'>('yellow');
   const [autoDownloadSubs, setAutoDownloadSubs] = useState(true);
 
-  // Streaming Engine
-  const [maxResolution, setMaxResolution] = useState<'4k' | '1080p' | 'auto'>('4k');
-  const [fastSeek, setFastSeek] = useState(true);
-
   // Storage & Drives
   const [autoScanUsb, setAutoScanUsb] = useState(true);
   const [libraryUpdateFreq, setLibraryUpdateFreq] = useState<'hourly' | 'daily' | 'manual'>('daily');
@@ -269,6 +261,39 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   // Server & LAN
   const [dlnaBroadcast, setDlnaBroadcast] = useState(true);
   const [upnpPortForward, setUpnpPortForward] = useState(true);
+  const [proxyStatus, setProxyStatus] = useState<{
+    outboundEnabled: boolean;
+    endpoint: string;
+    allowlistSize: number;
+    gatewayEnabled: boolean;
+    gatewayUser: string | null;
+    host: string;
+    port: number;
+  } | null>(null);
+  const [proxyStatusError, setProxyStatusError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || activeCategory !== 'network') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch('/api/proxy/status');
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setProxyStatus(data);
+          setProxyStatusError(null);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setProxyStatusError(err?.message || 'Could not reach reverse proxy');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, activeCategory]);
 
   if (!isOpen) return null;
 
@@ -416,12 +441,11 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
           {/* Left Navigation Rail */}
           <div className="w-64 border-r border-white/10 p-4 flex flex-col gap-1.5 bg-black/40 overflow-y-auto no-scrollbar">
             {[
-              { id: 'profile', label: 'Profile & Account', icon: User, badge: currentProfile.initials },
+              { id: 'profile', label: 'Profile & Account', icon: User },
               { id: 'remote', label: 'TV Remote & D-Pad', icon: Gamepad2 },
               { id: 'audio-video', label: 'Display & Sound', icon: Sliders },
               { id: 'playback', label: 'Playback & Video', icon: Film },
               { id: 'subtitles', label: 'Subtitles & Audio', icon: Languages },
-              { id: 'streaming', label: 'Nascent Engine', icon: Zap },
               { id: 'storage', label: 'Storage & Drives', icon: HardDrive },
               { id: 'network', label: 'Server & LAN', icon: Server },
               { id: 'plugins', label: 'Plugins & Addons', icon: Puzzle, count: pluginsList.filter(p => p.isInstalled && p.enabled).length },
@@ -1171,101 +1195,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 6. Nascent Engine & ABR */}
-            {activeCategory === 'streaming' && (
-              <div className="flex flex-col gap-6">
-                <div>
-                  <h3 className="font-display font-bold text-lg text-white mb-1">Nascent Streaming Engine</h3>
-                  <p className="text-xs text-zinc-400 mb-4">Hardware decoding, adaptive bitrate policies, and buffer cache.</p>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Hardware Acceleration</span>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-white">GPU Video Decoder (HEVC/AV1)</span>
-                        <button
-                          onClick={() => setHardwareAccel(!hardwareAccel)}
-                          className={`w-12 h-6 rounded-full transition-colors relative ${hardwareAccel ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                        >
-                          <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${hardwareAccel ? 'right-0.5' : 'left-0.5'}`} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Buffer Cache Size</span>
-                      <div className="flex items-center gap-2">
-                        {['256MB', '512MB', '1GB'].map((b) => (
-                          <button
-                            key={b}
-                            onClick={() => setBufferSize(b)}
-                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                              bufferSize === b
-                                ? 'bg-sky-500 text-black'
-                                : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                            }`}
-                          >
-                            {b}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-semibold text-white">Sub-50ms Fast Seek</h4>
-                        <p className="text-xs text-zinc-400">Prefetches I-frame keyframe packets</p>
-                      </div>
-                      <button
-                        onClick={() => setFastSeek(!fastSeek)}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${fastSeek ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${fastSeek ? 'right-0.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Max Stream Resolution</span>
-                      <div className="flex items-center gap-2">
-                        {[
-                          { id: '4k', label: '4K Ultra HD' },
-                          { id: '1080p', label: '1080p FHD' },
-                          { id: 'auto', label: 'Auto ABR' },
-                        ].map((res) => (
-                          <button
-                            key={res.id}
-                            onClick={() => setMaxResolution(res.id as any)}
-                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                              maxResolution === res.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                            }`}
-                          >
-                            {res.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 p-5 rounded-2xl bg-sky-950/40 border border-sky-400/30 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-white">Full Telemetry HUD</h4>
-                      <p className="text-xs text-sky-300">Live bitrate graphs, dropping frame monitoring, and peer mesh</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        onClose();
-                        onOpenStreamingHUD();
-                      }}
-                      className="px-5 py-2.5 rounded-full bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-lg transition-all"
-                    >
-                      Open Telemetry HUD
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 7. Storage & Drives */}
+            {/* Storage & Drives */}
             {activeCategory === 'storage' && (
               <div className="flex flex-col gap-5">
                 <div>
@@ -1334,7 +1264,47 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               <div className="flex flex-col gap-5">
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Local Server & Network Diagnostics</h3>
-                  <p className="text-xs text-zinc-400 mb-4">Port configuration, DLNA broadcast, and LAN peer synchronization.</p>
+                  <p className="text-xs text-zinc-400 mb-4">Built-in reverse proxy, port binding, DLNA, and LAN sync.</p>
+
+                  <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3 mb-4">
+                    <div className="flex items-center gap-3 mb-1">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Built-in Reverse Proxy</h4>
+                        <p className="text-xs text-zinc-400">Allowlisted HTTPS gateway · Range streaming · optional Basic auth</p>
+                      </div>
+                    </div>
+                    {proxyStatusError ? (
+                      <p className="text-xs text-rose-400">{proxyStatusError}</p>
+                    ) : proxyStatus ? (
+                      <>
+                        <div className="flex items-center justify-between text-xs text-zinc-300">
+                          <span>Outbound endpoint</span>
+                          <span className="font-mono text-zinc-200">{proxyStatus.endpoint}?url=…</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-zinc-300">
+                          <span>Allowlisted hosts</span>
+                          <span className="font-mono text-zinc-200">{proxyStatus.allowlistSize}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-zinc-300">
+                          <span>Gateway auth</span>
+                          <span className={`font-bold ${proxyStatus.gatewayEnabled ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {proxyStatus.gatewayEnabled
+                              ? `On · ${proxyStatus.gatewayUser}`
+                              : 'Off · set NASCENT_GATEWAY_PASSWORD'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-zinc-300">
+                          <span>Bind</span>
+                          <span className="font-mono text-zinc-200">{proxyStatus.host}:{proxyStatus.port}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-zinc-500">Loading proxy status…</p>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
@@ -1367,11 +1337,15 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
                     <div className="flex items-center justify-between text-xs text-zinc-300">
                       <span>Server Status</span>
-                      <span className="font-bold text-emerald-400">Online · Port 3000 Active</span>
+                      <span className="font-bold text-emerald-400">
+                        Online · Port {proxyStatus?.port ?? 3000} Active
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-zinc-300">
-                      <span>LAN Address</span>
-                      <span className="font-mono text-zinc-200">192.168.1.104:3000</span>
+                      <span>Bind address</span>
+                      <span className="font-mono text-zinc-200">
+                        {proxyStatus ? `${proxyStatus.host}:${proxyStatus.port}` : '127.0.0.1:3000'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-zinc-300">
                       <span>Bandwidth Limit</span>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react';
 import { 
   Search, 
   X, 
@@ -17,11 +17,49 @@ import {
   MicOff,
   Volume2,
   Radio,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { FeaturedMovie } from '../../lib/types';
 import { AppLogo } from '../AppLogo';
 import { LOCAL_MEDIA_FILES, SHARED_PEER_LIBRARIES } from '../../lib/tvMediaData';
+import { globalPluginEngine } from '../../lib/plugins/pluginEngine';
+import { MetaDetail } from '../../lib/plugins/types';
+import { searchImdb } from '../../lib/imdbService';
+
+const metaToFeaturedMovie = (meta: MetaDetail): FeaturedMovie => {
+  const year =
+    (meta.releaseInfo || '')
+      .split(/[–-]/)[0]
+      ?.trim() || '';
+  const ratingRaw = meta.imdbRating;
+  const rating =
+    typeof ratingRaw === 'number'
+      ? ratingRaw
+      : ratingRaw
+        ? parseFloat(String(ratingRaw))
+        : undefined;
+
+  return {
+    id: meta.id,
+    imdbId: meta.id?.startsWith('tt') ? meta.id : undefined,
+    title: meta.name,
+    releaseYear: year,
+    posterUrl: meta.poster || '',
+    bannerUrl: meta.background || meta.poster,
+    genres: meta.genres?.length
+      ? meta.genres
+      : meta.type === 'series'
+        ? ['TV Series']
+        : ['Movie'],
+    rating: Number.isFinite(rating) ? rating : undefined,
+    imdbRating: meta.imdbRating,
+    director: meta.director?.[0],
+    cast: meta.cast,
+    summary: meta.description,
+    statusBadge: meta.type === 'series' ? 'TV Series' : 'Movie',
+  };
+};
 
 export interface UserCustomList {
   id: string;
@@ -73,6 +111,10 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
   const [selectedGenre, setSelectedGenre] = useState<string>('All Genres');
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformFilter>('All Platforms');
   const [searchLocalOnly, setSearchLocalOnly] = useState(false);
+  const [remoteResults, setRemoteResults] = useState<FeaturedMovie[]>([]);
+  const [isRemoteSearching, setIsRemoteSearching] = useState(false);
+  const remoteSearchSeq = useRef(0);
+  const deferredQuery = useDeferredValue(query);
 
   // Active open dropdown
   const [openDropdown, setOpenDropdown] = useState<'type' | 'sort' | 'genre' | 'platform' | null>(null);
@@ -323,49 +365,116 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
     return [...locals, ...shared];
   }, []);
 
+  // Stremio-style remote catalog search — Cinemeta is always included by default
+  useEffect(() => {
+    const q = deferredQuery.trim();
+    if (!isOpen || searchLocalOnly || q.length < 2) {
+      setRemoteResults([]);
+      setIsRemoteSearching(false);
+      return;
+    }
+
+    const seq = ++remoteSearchSeq.current;
+    setIsRemoteSearching(true);
+
+    const types: Array<'movie' | 'series'> =
+      selectedType === 'Movie'
+        ? ['movie']
+        : selectedType === 'TV Show'
+          ? ['series']
+          : ['movie', 'series'];
+
+    const run = async () => {
+      try {
+        let metas = await globalPluginEngine.searchCatalogs(q, types);
+
+        // Fallback: IMDb suggestion search (same index Stremio/Cinemeta uses)
+        if (metas.length === 0) {
+          const imdbHits = await searchImdb(
+            q,
+            selectedType === 'Movie' ? 'movie' : selectedType === 'TV Show' ? 'series' : undefined
+          );
+          metas = imdbHits.map((hit) => ({
+            id: hit.id,
+            type: hit.type?.toLowerCase().includes('series') ? 'series' : 'movie',
+            name: hit.title,
+            poster: hit.posterUrl,
+            releaseInfo: hit.year ? String(hit.year) : undefined,
+            cast: hit.cast ? hit.cast.split(',').map((s) => s.trim()) : undefined,
+          }));
+        }
+
+        if (seq !== remoteSearchSeq.current) return;
+        setRemoteResults(metas.map(metaToFeaturedMovie));
+      } catch (err) {
+        console.error('Remote catalog search failed:', err);
+        if (seq === remoteSearchSeq.current) setRemoteResults([]);
+      } finally {
+        if (seq === remoteSearchSeq.current) setIsRemoteSearching(false);
+      }
+    };
+
+    const timer = window.setTimeout(run, 280);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [deferredQuery, isOpen, searchLocalOnly, selectedType]);
+
   const filteredMovies = useMemo(() => {
+    const activeQuery = query.trim();
     const isSearching =
-      query.trim().length > 0 ||
+      activeQuery.length > 0 ||
       selectedGenre !== 'All Genres' ||
       selectedType !== 'Movie' ||
       selectedSort !== 'Popular' ||
       selectedPlatform !== 'All Platforms' ||
       searchLocalOnly;
 
-    if (!isSearching && !query.trim()) return [];
+    if (!isSearching && !activeQuery) return [];
 
     const baseSource = searchLocalOnly ? localLibraryMovies : movies;
+    const q = activeQuery.toLowerCase();
 
-    let list = baseSource.filter((m) => {
-      // 1. Query match
-      if (query.trim()) {
-        const q = query.toLowerCase();
+    const localMatches = baseSource.filter((m) => {
+      if (q) {
         const matches =
           m.title.toLowerCase().includes(q) ||
           (m.director && m.director.toLowerCase().includes(q)) ||
           (m.genres && m.genres.some((g) => g.toLowerCase().includes(q)));
         if (!matches) return false;
       }
+      return true;
+    });
 
-      // 2. Type filter
-      if (selectedType === 'Movie') {
-        const isShow = ['severance', 'shogun', 'the-bear', 'the-last-of-us', 'stranger-things', 'squid-game', 'ted-lasso'].includes(m.id) ||
-          m.genres?.includes('TV Show') || m.genres?.includes('TV Series');
-        if (isShow) return false;
-      } else if (selectedType === 'TV Show') {
-        const isShow = ['severance', 'shogun', 'the-bear', 'the-last-of-us', 'stranger-things', 'squid-game', 'ted-lasso'].includes(m.id) ||
-          m.genres?.includes('TV Show') || m.genres?.includes('TV Series');
-        if (!isShow) return false;
-      }
+    const seen = new Set(localMatches.map((m) => m.id));
+    const remoteExtra = searchLocalOnly
+      ? []
+      : remoteResults.filter((m) => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
 
-      // 3. Genre filter
-      if (selectedGenre !== 'All Genres') {
+    let list = [...remoteExtra, ...localMatches].filter((m) => {
+      const isRemoteHit = !searchLocalOnly && remoteResults.some((r) => r.id === m.id);
+
+      // Type filter
+      const isShow =
+        m.statusBadge === 'TV Series' ||
+        ['severance', 'shogun', 'the-bear', 'the-last-of-us', 'stranger-things', 'squid-game', 'ted-lasso'].includes(m.id) ||
+        !!m.genres?.includes('TV Show') ||
+        !!m.genres?.includes('TV Series');
+      if (selectedType === 'Movie' && isShow) return false;
+      if (selectedType === 'TV Show' && !isShow) return false;
+
+      // Genre filter (skip for remote catalog hits — Cinemeta genre tags vary)
+      if (selectedGenre !== 'All Genres' && !isRemoteHit) {
         const hasGenre = m.genres && m.genres.some((g) => g.toLowerCase() === selectedGenre.toLowerCase());
         if (!hasGenre) return false;
       }
 
-      // 4. Platform filter
-      if (selectedPlatform !== 'All Platforms') {
+      // Platform filter (local library heuristics only)
+      if (selectedPlatform !== 'All Platforms' && !isRemoteHit) {
         const id = m.id.toLowerCase();
         const title = m.title.toLowerCase();
         const genres = (m.genres || []).map((g) => g.toLowerCase());
@@ -408,9 +517,13 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
       return true;
     });
 
-    // 5. Sorting
+    // Sorting
     if (selectedSort === 'Top Rated') {
-      list = [...list].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      const toRating = (r: FeaturedMovie['rating']) => {
+        const n = typeof r === 'number' ? r : parseFloat(String(r ?? ''));
+        return Number.isFinite(n) ? n : 0;
+      };
+      list = [...list].sort((a, b) => toRating(b.rating) - toRating(a.rating));
     } else if (selectedSort === 'Newest') {
       list = [...list].sort((a, b) => parseInt(b.releaseYear || '0') - parseInt(a.releaseYear || '0'));
     } else if (selectedSort === 'Title A-Z') {
@@ -418,7 +531,7 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
     }
 
     return list;
-  }, [movies, query, selectedType, selectedSort, selectedGenre, selectedPlatform, searchLocalOnly, localLibraryMovies]);
+  }, [movies, query, selectedType, selectedSort, selectedGenre, selectedPlatform, searchLocalOnly, localLibraryMovies, remoteResults]);
 
   // Map user custom list IDs to movie objects
   const populatedUserLists = useMemo(() => {
@@ -1105,11 +1218,18 @@ export const TvSearchModal: React.FC<TvSearchModalProps> = ({
               {selectedType !== 'All' ? ` in ${selectedType}` : ''}
               {selectedGenre !== 'All Genres' ? ` (${selectedGenre})` : ''}
               {query.trim() ? ` for "${query}"` : ''}
+              {isRemoteSearching ? ' · searching Cinemeta…' : ''}
             </span>
             <span className="font-medium text-sky-400">Sorted by {selectedSort}</span>
           </div>
 
-          {filteredMovies.length === 0 ? (
+          {filteredMovies.length === 0 && isRemoteSearching ? (
+            <div className="h-64 flex flex-col items-center justify-center text-center">
+              <Loader2 className="w-10 h-10 text-sky-400 mb-3 animate-spin" />
+              <span className="text-zinc-300 font-display text-lg font-bold">Searching catalogs…</span>
+              <p className="text-xs text-zinc-500 mt-1">Querying Cinemeta and installed Stremio addons</p>
+            </div>
+          ) : filteredMovies.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center text-center">
               <Film className="w-12 h-12 text-zinc-600 mb-3" />
               <span className="text-zinc-300 font-display text-lg font-bold">No matching titles found</span>

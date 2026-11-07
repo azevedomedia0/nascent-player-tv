@@ -3,6 +3,8 @@
  * Provides direct access to IMDb search, ratings, plot synopses, cast, and certifications.
  */
 
+import { apiFetch } from './apiAuth';
+
 export interface CastMember {
   name: string;
   role?: string;
@@ -150,7 +152,7 @@ export async function searchImdb(query: string, type?: 'movie' | 'series'): Prom
   try {
     const params = new URLSearchParams({ q: query.trim() });
     if (type) params.append('type', type);
-    const res = await fetch(`/api/imdb/search?${params.toString()}`);
+    const res = await apiFetch(`/api/imdb/search?${params.toString()}`);
     if (!res.ok) throw new Error(`IMDb search returned status ${res.status}`);
     const data = await res.json();
     return data.results || [];
@@ -171,7 +173,7 @@ export async function fetchImdbMetadata(titleOrId: string, type?: 'movie' | 'ser
       ? `/api/imdb/title/${encodeURIComponent(titleOrId.trim())}${type ? `?type=${type}` : ''}`
       : `/api/imdb/metadata?title=${encodeURIComponent(titleOrId.trim())}${type ? `&type=${type}` : ''}`;
 
-    const res = await fetch(endpoint);
+    const res = await apiFetch(endpoint);
     if (!res.ok) throw new Error(`IMDb lookup returned status ${res.status}`);
     const data = await res.json();
     const meta: ImdbMetadata = data.metadata || data;
@@ -190,7 +192,7 @@ export async function fetchImdbMetadata(titleOrId: string, type?: 'movie' | 'ser
  */
 export async function enrichWithImdb(title: string, currentId?: string, type?: 'movie' | 'series'): Promise<Partial<ImdbMetadata> | null> {
   try {
-    const res = await fetch('/api/imdb/enrich', {
+    const res = await apiFetch('/api/imdb/enrich', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, id: currentId, type })

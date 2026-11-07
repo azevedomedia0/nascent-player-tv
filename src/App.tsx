@@ -4,36 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  Play, 
-  Film, 
-  Plus, 
-  Check, 
-  Users, 
-  Info, 
-  Star, 
-  Volume2, 
-  Clock, 
-  Zap, 
-  FolderPlus,
-  Upload,
-  Bookmark,
-  Sparkles,
-  Gamepad2,
-  Settings,
-  ArrowRight,
-  HardDrive,
-  Share2,
-  Wifi,
-  Server,
-  CheckCircle2,
-  RefreshCw,
-  FileVideo,
-  Radio,
-  Database,
-  ShieldCheck,
-  X
-} from 'lucide-react';
+import { Bookmark } from 'lucide-react';
 import { TvTopNav, TvTab } from './components/tv/TvTopNav';
 import { 
   TvHeroBillboard, 
@@ -1009,37 +980,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: WATCH PARTY */}
-        {activeTab === 'watch-party' && (
-          <div className="px-8 lg:px-14 pt-6 flex flex-col gap-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="font-display font-extrabold text-3xl lg:text-4xl text-white tracking-wide">
-                  Live Watch Party Hub
-                </h1>
-                <p className="text-sm text-zinc-400 mt-1">
-                  Watch synced 4K movies with friends across TVs with zero audio drift.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setWatchPartyMovie(currentFeatured)}
-                className="flex items-center gap-2 px-7 py-3.5 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500 text-black font-extrabold text-sm shadow-xl transition-all hover:scale-105"
-              >
-                <Users className="w-5 h-5" />
-                <span>Host Watch Party Now</span>
-              </button>
-            </div>
-
-            <TvContentRow
-              title="Party Suggestions: Crowd Pleasers"
-              items={moviesList.slice(0, 8)}
-              onSelectItem={(m) => setWatchPartyMovie(m)}
-            />
-          </div>
-        )}
-
-        {/* TAB 7: SEARCH */}
+        {/* TAB: SEARCH */}
         {activeTab === 'search' && (
           <div className="w-full flex-1 min-h-[600px] relative">
             <TvSearchModal
@@ -1179,7 +1120,6 @@ export default function App() {
       <TvSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onOpenStreamingHUD={() => setIsStreamingHUDOpen(true)}
         onToggleRemote={() => setIsRemoteOpen((prev) => !prev)}
         isRemoteOpen={isRemoteOpen}
         onOpenPlugins={() => setIsPluginModalOpen(true)}

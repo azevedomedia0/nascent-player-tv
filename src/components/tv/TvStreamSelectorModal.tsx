@@ -549,17 +549,17 @@ export const TvStreamSelectorModal: React.FC<TvStreamSelectorModalProps> = ({
                   {isLocked ? (
                     <button
                       type="button"
-                      className="px-4 py-2 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg transition-all transform group-hover:scale-105 pointer-events-none"
+                      className="flex items-center gap-2.5 px-6 sm:px-7 py-2.5 sm:py-3 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 text-black font-bold text-xs sm:text-sm tracking-wide shadow-xl shadow-black/50 transition-all pointer-events-none active:scale-95"
                     >
-                      <Lock className="w-3.5 h-3.5 fill-current" />
+                      <Lock className="w-4 h-4 fill-current ml-0.5" />
                       <span>Unlock VIP</span>
                     </button>
                   ) : (
                     <button
                       type="button"
-                      className="px-4 py-2 rounded-full bg-white group-hover:bg-sky-400 text-black font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all transform group-hover:scale-105 pointer-events-none"
+                      className="flex items-center gap-2.5 px-6 sm:px-7 py-2.5 sm:py-3 rounded-full bg-white group-hover:bg-zinc-200 text-black font-bold text-xs sm:text-sm tracking-wide shadow-xl shadow-black/50 transition-all pointer-events-none active:scale-95"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <Play className="w-4 h-4 fill-black text-black ml-0.5" />
                       <span>Play Stream</span>
                     </button>
                   )}

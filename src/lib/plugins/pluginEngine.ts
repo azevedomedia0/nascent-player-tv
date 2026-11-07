@@ -7,6 +7,7 @@ import {
   AddonResourceType 
 } from './types';
 import { DEFAULT_COMMUNITY_ADDONS } from './defaultPlugins';
+import { apiFetch } from '../apiAuth';
 
 const STORAGE_KEY = 'nascent_media_addons_registry_v1';
 const SETTINGS_KEY = 'nascent_media_addons_settings_v1';
@@ -434,6 +435,21 @@ export class PluginEngine {
     return null;
   }
 
+  /** Fetch addon JSON via local Stremio proxy to bypass browser CORS. */
+  private async fetchAddonJson(url: string, timeoutMs = 8000): Promise<any | null> {
+    try {
+      const proxyUrl = `/api/stremio/proxy?url=${encodeURIComponent(url)}`;
+      const resp = await apiFetch(proxyUrl, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!resp.ok) return null;
+      return await resp.json();
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Query catalogs from enabled catalog addons
    */
@@ -445,23 +461,98 @@ export class PluginEngine {
         const baseUrl = addon.transportUrl.replace('/manifest.json', '');
         const extraPart = extraArgs ? `/${extraArgs}` : '';
         const catUrl = `${baseUrl}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extraPart}.json`;
-        
-        const resp = await fetch(catUrl, {
-          headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(6000)
-        });
-
-        if (resp.ok) {
-          const data = await resp.json();
-          if (Array.isArray(data.metas)) {
-            return data.metas;
-          }
+        const data = await this.fetchAddonJson(catUrl, 6000);
+        if (data && Array.isArray(data.metas)) {
+          return data.metas;
         }
       } catch (err) {
         console.warn(`[PluginEngine] Error querying catalog from ${addon.manifest.name}:`, err);
       }
     }
     return [];
+  }
+
+  /**
+   * Stremio-style catalog search across enabled catalog addons.
+   * Always includes Cinemeta (Stremio's primary search index) by default.
+   * Hits `/catalog/:type/:id/search=<query>.json`.
+   */
+  public async searchCatalogs(
+    query: string,
+    types: Array<'movie' | 'series'> = ['movie', 'series']
+  ): Promise<MetaDetail[]> {
+    const q = query.trim();
+    if (!q) return [];
+
+    const extra = `search=${encodeURIComponent(q)}`;
+    const catalogAddons = this.addons.filter((a) =>
+      a.enabled &&
+      a.manifest.resources.some((r) => r === 'catalog' || (typeof r === 'object' && r.name === 'catalog'))
+    );
+
+    const cinemetaFallback: InstalledAddon = {
+      manifest: {
+        id: 'com.linvo.cinemeta',
+        name: 'Cinemeta',
+        version: '3.0.12',
+        description: '',
+        types: ['movie', 'series'],
+        resources: ['catalog', 'meta'],
+        catalogs: [
+          { type: 'movie', id: 'top', name: 'top', extra: [{ name: 'search' }] },
+          { type: 'series', id: 'top', name: 'top', extra: [{ name: 'search' }] },
+        ],
+      },
+      transportUrl: 'https://v3-cinemeta.strem.io/manifest.json',
+      enabled: true,
+      installedAt: new Date().toISOString(),
+    };
+
+    // Always query Cinemeta, plus any other enabled catalog addons
+    const byId = new Map<string, InstalledAddon>();
+    byId.set(cinemetaFallback.manifest.id, cinemetaFallback);
+    for (const a of catalogAddons) byId.set(a.manifest.id, a);
+    const targets = Array.from(byId.values());
+
+    const seen = new Set<string>();
+    const results: MetaDetail[] = [];
+
+    await Promise.all(
+      types.flatMap((type) =>
+        targets.map(async (addon) => {
+          const catalogs =
+            addon.manifest.catalogs?.filter((c) => c.type === type) ??
+            [{ type, id: 'top', name: 'top', extra: [{ name: 'search' }] }];
+
+          const searchable = catalogs.filter((c) =>
+            (c.extra || []).some((e) => e.name === 'search')
+          );
+          const toQuery =
+            searchable.length > 0
+              ? searchable
+              : catalogs.filter((c) => c.id === 'top').slice(0, 1) || catalogs.slice(0, 1);
+
+          for (const cat of toQuery) {
+            try {
+              const baseUrl = addon.transportUrl.replace(/\/manifest\.json$/i, '');
+              const catUrl = `${baseUrl}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(cat.id)}/${extra}.json`;
+              const data = await this.fetchAddonJson(catUrl, 8000);
+              if (!data || !Array.isArray(data.metas)) continue;
+              for (const meta of data.metas as MetaDetail[]) {
+                const key = meta.id || `${meta.type}:${meta.name}`;
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                results.push(meta);
+              }
+            } catch (err) {
+              console.warn(`[PluginEngine] Search failed for ${addon.manifest.name} (${type}/${cat.id}):`, err);
+            }
+          }
+        })
+      )
+    );
+
+    return results;
   }
 
   /**

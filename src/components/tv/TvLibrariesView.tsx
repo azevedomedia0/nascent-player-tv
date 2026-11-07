@@ -536,9 +536,6 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
                     <div className={`w-5 h-5 rounded-full ${activePeerWatchParty.avatarColor} text-white text-[10px] font-bold flex items-center justify-center shadow-sm`}>
                       {activePeerWatchParty.avatarInitials}
                     </div>
-                    <span className="text-xs font-bold text-white">
-                      {activePeerWatchParty.hostName}
-                    </span>
                     <span className="text-[11px] font-mono text-pink-300">
                       {activePeerWatchParty.hostHandle}
                     </span>
@@ -624,7 +621,7 @@ export const TvLibrariesView: React.FC<TvLibrariesViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search local storage & shared files by title, codec, audio, or peer..."
-              className="w-full pl-11 pr-24 py-2.5 rounded-xl bg-black/40 border border-purple-500/15 hover:border-purple-400/30 focus:border-purple-400 text-sm text-white placeholder-zinc-500 focus:outline-none transition-all font-sans"
+              className="w-full pl-11 pr-24 py-2.5 rounded-full bg-black/40 border border-purple-500/15 hover:border-purple-400/30 focus:border-purple-400 text-sm text-white placeholder-zinc-500 focus:outline-none transition-all font-sans"
               aria-label="Search local and shared media files"
             />
             {searchQuery && (

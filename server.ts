@@ -17,12 +17,19 @@ import {
   clampBenchmarkBytes,
   MAX_UPLOAD_BYTES,
 } from "./src/lib/security";
+import {
+  gatewayAuthMiddleware,
+  getReverseProxyStatus,
+  isGatewayEnabled,
+  pipeProxyResponse,
+  proxyFetch,
+} from "./src/lib/reverseProxy";
 
 dotenv.config();
 
-// SECURITY: bind localhost by default. Set HOST=0.0.0.0 only behind a
-// reverse proxy that adds authentication — this server has no built-in
-// login, so exposing it directly also exposes every /api endpoint.
+// SECURITY: bind localhost by default. For LAN/remote access either put
+// the app behind an external reverse proxy, or enable the built-in
+// gateway (NASCENT_GATEWAY_PASSWORD) and optionally NASCENT_API_TOKEN.
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) || 3000 : 3000;
 const HOST = process.env.HOST || "127.0.0.1";
 // Optional shared token. When NASCENT_API_TOKEN is set, mutating API
@@ -36,6 +43,10 @@ app.disable("x-powered-by");
 // call here needs. Uploads use a raw stream, not JSON, so 1 MB is ample.
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+// Built-in reverse-proxy front door: HTTP Basic Auth for the whole app
+// when NASCENT_GATEWAY_PASSWORD is set (see SECURITY.md).
+app.use(gatewayAuthMiddleware);
 
 // Minimal security headers (no extra dependency).
 app.use((req, res, next) => {
@@ -52,6 +63,7 @@ const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
 function rateLimit(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!req.path.startsWith("/api/")) return next();
   const sensitive =
+    req.path.startsWith("/api/proxy") ||
     req.path.startsWith("/api/stremio/proxy") ||
     req.path.startsWith("/api/metadata/enrich") ||
     req.path.startsWith("/api/upload") ||
@@ -78,11 +90,19 @@ app.use(rateLimit);
 // use is unchanged; enable it before exposing the server anywhere.
 app.use("/api", (req, res, next) => {
   if (!API_TOKEN) return next();
+  // Status is always readable so Settings can show proxy state.
+  if (req.method === "GET" && req.path === "/proxy/status") return next();
   const sensitiveGet =
     req.method === "GET" &&
-    (req.path.startsWith("/stremio/proxy") || req.path.startsWith("/stream/benchmark"));
+    (req.path.startsWith("/proxy") ||
+      req.path.startsWith("/stremio/proxy") ||
+      req.path.startsWith("/stream/benchmark"));
   if (req.method === "GET" && !sensitiveGet) return next();
-  const supplied = req.get("authorization")?.replace(/^Bearer\s+/i, "") || req.get("x-api-token") || "";
+  const auth = req.get("authorization") || "";
+  const bearer = /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, "") : "";
+  // Prefer Bearer; fall back to x-api-token so Basic gateway auth can
+  // coexist (browsers only send one Authorization header).
+  const supplied = bearer || req.get("x-api-token") || "";
   if (supplied !== API_TOKEN) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -1150,6 +1170,50 @@ app.delete("/api/history", (req, res) => {
   res.json({ success: true });
 });
 
+// Built-in reverse proxy — allowlisted HTTPS outbound gateway for media,
+// posters, and addon payloads. Supports Range requests for video seeking.
+// Hosts: Stremio addon allowlist + DEFAULT_MEDIA_PROXY_ALLOWLIST + PROXY_ALLOWLIST.
+app.get("/api/proxy/status", (_req, res) => {
+  res.json(getReverseProxyStatus());
+});
+
+app.options("/api/proxy", (_req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Range, Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  res.status(204).end();
+});
+
+app.get("/api/proxy", async (req, res) => {
+  try {
+    const headers: Record<string, string> = {
+      "User-Agent": "Nascent-Player-TV/1.0 (built-in reverse proxy)",
+      Accept: "*/*",
+    };
+    const range = req.get("range");
+    if (range) headers.Range = range;
+
+    const { response } = await proxyFetch(req.query.url, {
+      headers,
+      timeoutMs: 20_000,
+    });
+    await pipeProxyResponse(response, res);
+  } catch (err: any) {
+    const message = err?.message || "Proxy request failed";
+    const status =
+      message.includes("not allowed") ||
+      message.includes("must use") ||
+      message.includes("Invalid") ||
+      message.includes("Missing")
+        ? 400
+        : 502;
+    if (!res.headersSent) {
+      res.status(status).json({ error: message });
+    }
+  }
+});
+
 // Stremio Addon universal proxy to bypass CORS
 // SECURITY: this was an open SSRF proxy — any caller could make the
 // server fetch an arbitrary URL, including cloud metadata
@@ -1158,6 +1222,7 @@ app.delete("/api/history", (req, res) => {
 // allowlist (bundled addon hosts, plus STREMIO_PROXY_ALLOWLIST), with
 // a 10 s timeout and a 5 MB response cap. Addon hosts not on the list
 // are rejected with 400 — add them explicitly via the env var.
+// For general media/CDN proxying use /api/proxy instead.
 app.get("/api/stremio/proxy", async (req, res) => {
   let target: URL;
   try {
@@ -1654,11 +1719,16 @@ async function startServer() {
 
   server.listen(PORT, HOST, () => {
     console.log(`[IINA SERVER] Streaming container online on http://${HOST}:${PORT}`);
-    if (HOST === "0.0.0.0") {
+    console.log(`[IINA SERVER] Built-in reverse proxy: GET /api/proxy?url=…`);
+    if (isGatewayEnabled()) {
+      console.log(
+        `[IINA SERVER] Gateway auth enabled (HTTP Basic) — user "${getReverseProxyStatus().gatewayUser}"`
+      );
+    } else if (HOST === "0.0.0.0") {
       console.warn(
-        "[IINA SERVER] WARNING: listening on all interfaces with no built-in " +
-          "authentication. Put it behind a reverse proxy with auth, or set " +
-          "NASCENT_API_TOKEN and HOST=127.0.0.1. See SECURITY.md."
+        "[IINA SERVER] WARNING: listening on all interfaces with no gateway " +
+          "auth. Set NASCENT_GATEWAY_PASSWORD (built-in reverse-proxy login), " +
+          "or put nginx/Caddy in front. See SECURITY.md."
       );
     }
   });

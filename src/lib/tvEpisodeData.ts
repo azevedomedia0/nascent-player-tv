@@ -10,8 +10,23 @@ export interface EpisodeItem {
   rating?: string;
 }
 
-export const isTvSeries = (movie?: { id?: string; title?: string; certification?: string } | null): boolean => {
+export const isTvSeries = (movie?: {
+  id?: string;
+  title?: string;
+  certification?: string;
+  statusBadge?: string;
+  genres?: string[];
+} | null): boolean => {
   if (!movie) return false;
+
+  const badge = movie.statusBadge?.toLowerCase() || '';
+  if (badge === 'movie') return false;
+  if (badge.includes('tv series') || badge.includes('series') || badge.includes('show')) return true;
+
+  const genres = (movie.genres || []).map((g) => g.toLowerCase());
+  if (genres.some((g) => g === 'movie' || g === 'film')) return false;
+  if (genres.some((g) => g.includes('tv series') || g === 'tv show' || g === 'series')) return true;
+
   const id = movie.id?.toLowerCase() || '';
   const title = movie.title?.toLowerCase() || '';
   const cert = movie.certification?.toLowerCase() || '';
