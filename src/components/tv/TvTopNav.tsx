@@ -138,45 +138,39 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
       )}
 
       {/* Centered TV Top Navigation Links */}
-      <nav className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 lg:gap-2.5 z-10 pointer-events-auto">
+      <nav className="absolute left-1/2 -translate-x-1/2 flex items-center gap-0.5 lg:gap-1 z-10 pointer-events-auto px-1.5 py-1 rounded-full bg-black/45 backdrop-blur-xl border border-white/15 shadow-lg shadow-black/40">
         {/* Search Quick Action */}
         <button
           onClick={onOpenSearch}
-          className={`flex items-center gap-1.5 px-3 py-1.5 font-medium text-xs sm:text-sm transition-all focus:outline-none bg-transparent ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-medium text-xs sm:text-sm transition-all focus:outline-none ${
             isSearchOpen
-              ? 'text-white font-bold'
-              : 'text-zinc-400 hover:text-white'
+              ? 'text-black font-bold nascent-logo-gradient shadow-md shadow-pink-500/25'
+              : 'text-zinc-400 hover:text-white hover:bg-white/5'
           }`}
           title="Search movies, shows, genres (Press /)"
           aria-label="Search"
           tabIndex={0}
         >
-          <Search className={`w-3.5 h-3.5 transition-colors ${isSearchOpen ? 'text-sky-400' : 'text-zinc-400'}`} />
+          <Search className={`w-3.5 h-3.5 transition-colors ${isSearchOpen ? 'text-black' : 'text-zinc-400'}`} />
           <span>Search</span>
-          {isSearchOpen && (
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]" />
-          )}
         </button>
 
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id || (item.id === 'local-media' && activeTab === 'library');
+          const isActive = !isSearchOpen && (activeTab === item.id || (item.id === 'local-media' && activeTab === 'library'));
           return (
             <button
               key={item.id}
               onClick={() => onTabChange(item.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 font-medium text-xs sm:text-sm transition-all focus:outline-none bg-transparent ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-medium text-xs sm:text-sm transition-all focus:outline-none ${
                 isActive
-                  ? 'text-white font-bold'
-                  : 'text-zinc-400 hover:text-white'
+                  ? 'text-black font-bold nascent-logo-gradient shadow-md shadow-pink-500/25'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
               tabIndex={0}
             >
-              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-sky-400' : 'text-zinc-400'}`} />
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-black' : 'text-zinc-400'}`} />
               <span>{item.label}</span>
-              {isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]" />
-              )}
             </button>
           );
         })}
@@ -221,34 +215,38 @@ export const TvTopNav: React.FC<TvTopNavProps> = ({
                     </span>
                   )}
                 </div>
-                {unreadCount > 0 && (
+                {notifications.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
+                    onClick={() => setNotifications([])}
                     className="text-[10px] text-sky-400 hover:text-sky-300 font-medium cursor-pointer"
                   >
-                    Mark read
+                    Clear Messages
                   </button>
                 )}
               </div>
 
               <div className="space-y-2 max-h-64 overflow-y-auto no-scrollbar">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${
-                      n.read
-                        ? 'bg-white/[0.03] border-white/5 opacity-75'
-                        : 'bg-white/[0.08] border-white/15'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-white line-clamp-1">{n.title}</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">{n.time}</span>
+                {notifications.length === 0 ? (
+                  <p className="py-6 text-center text-[11px] text-zinc-500">No messages</p>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        n.read
+                          ? 'bg-white/[0.03] border-white/5 opacity-75'
+                          : 'bg-white/[0.08] border-white/15'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-white line-clamp-1">{n.title}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">{n.time}</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-snug line-clamp-2">{n.message}</p>
                     </div>
-                    <p className="text-[11px] text-zinc-300 leading-snug line-clamp-2">{n.message}</p>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           )}

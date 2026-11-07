@@ -11,4 +11,6 @@ coverage/
 
 # Runtime data (user library/history/plugins) — never commit
 data/*.json
+# Auto-generated API token (see server.ts resolveApiToken) — a secret
+data/api-token.txt
 media/

@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   Settings, 
-  Sliders, 
-  Zap, 
   Puzzle, 
   Wifi, 
   Volume2, 
@@ -17,6 +15,7 @@ import {
   Film,
   HardDrive,
   Moon,
+  Palette,
   Tv,
   Trash2,
   RefreshCw,
@@ -25,7 +24,7 @@ import {
   Gamepad2,
   User,
   UserCheck,
-  UserPlus,
+  LogOut,
   Shield,
   Eye,
   EyeOff,
@@ -34,13 +33,20 @@ import {
   ChevronDown,
   Layers,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Globe
 } from 'lucide-react';
+import { apiFetch, clearApiToken, getApiToken, setApiToken } from '../../lib/apiAuth';
+import {
+  UI_THEMES,
+  UiThemeId,
+  applyUiTheme,
+  getStoredUiTheme,
+} from '../../lib/uiTheme';
 
 interface TvSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenStreamingHUD: () => void;
   onToggleRemote?: () => void;
   isRemoteOpen?: boolean;
   onOpenPlugins?: () => void;
@@ -64,7 +70,6 @@ export type SettingCategory =
   | 'audio-video' 
   | 'playback' 
   | 'subtitles' 
-  | 'streaming' 
   | 'storage' 
   | 'network';
 
@@ -94,7 +99,6 @@ interface UserProfile {
 export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   isOpen,
   onClose,
-  onOpenStreamingHUD,
   onToggleRemote,
   isRemoteOpen = false,
   onOpenPlugins,
@@ -238,8 +242,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   ]);
 
   // Audio / Video & Existing Preferences
-  const [bufferSize, setBufferSize] = useState('512MB');
-  const [hardwareAccel, setHardwareAccel] = useState(true);
   const [ambilightMode, setAmbilightMode] = useState('vibrant');
   const [nightMode, setNightMode] = useState(false);
   const [audioPassthrough, setAudioPassthrough] = useState(true);
@@ -257,10 +259,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   const [subtitleColor, setSubtitleColor] = useState<'yellow' | 'white' | 'cyan'>('yellow');
   const [autoDownloadSubs, setAutoDownloadSubs] = useState(true);
 
-  // Streaming Engine
-  const [maxResolution, setMaxResolution] = useState<'4k' | '1080p' | 'auto'>('4k');
-  const [fastSeek, setFastSeek] = useState(true);
-
   // Storage & Drives
   const [autoScanUsb, setAutoScanUsb] = useState(true);
   const [libraryUpdateFreq, setLibraryUpdateFreq] = useState<'hourly' | 'daily' | 'manual'>('daily');
@@ -269,6 +267,48 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   // Server & LAN
   const [dlnaBroadcast, setDlnaBroadcast] = useState(true);
   const [upnpPortForward, setUpnpPortForward] = useState(true);
+  const [proxyStatus, setProxyStatus] = useState<{
+    outboundEnabled: boolean;
+    endpoint: string;
+    allowlistSize: number;
+    gatewayEnabled: boolean;
+    gatewayUser: string | null;
+    host: string;
+    port: number;
+  } | null>(null);
+  const [proxyStatusError, setProxyStatusError] = useState<string | null>(null);
+
+  // API token (NASCENT_API_TOKEN) — entered by the user, kept in
+  // sessionStorage for this browser tab only. Never baked into the
+  // app bundle (see src/lib/apiAuth.ts).
+  const [apiTokenInput, setApiTokenInput] = useState<string>(() => getApiToken());
+  const [apiTokenSaved, setApiTokenSaved] = useState<boolean>(() => getApiToken().length > 0);
+
+  // UI theme (app shell background) — persisted in localStorage
+  const [uiTheme, setUiTheme] = useState<UiThemeId>(() => getStoredUiTheme());
+
+  useEffect(() => {
+    if (!isOpen || activeCategory !== 'network') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch('/api/proxy/status');
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setProxyStatus(data);
+          setProxyStatusError(null);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setProxyStatusError(err?.message || 'Could not reach reverse proxy');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, activeCategory]);
 
   if (!isOpen) return null;
 
@@ -298,20 +338,15 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
     setTimeout(() => setProfileFeedback(null), 3000);
   };
 
-  const handleAddNewProfile = () => {
-    const newName = `Guest ${profiles.length + 1}`;
-    const newProfile: UserProfile = {
-      id: String(Date.now()),
-      name: newName,
-      initials: 'G' + (profiles.length + 1),
-      color: 'from-purple-500 to-pink-600',
-      isKid: false,
-    };
-    setProfiles((prev) => [...prev, newProfile]);
-    setActiveProfileId(newProfile.id);
-    setProfileNameInput(newName);
-    setProfileFeedback(`Created and switched to "${newName}".`);
-    setTimeout(() => setProfileFeedback(null), 3500);
+  const handleLogOut = () => {
+    clearApiToken();
+    setApiTokenInput('');
+    setApiTokenSaved(false);
+    setProfileFeedback('Signed out of this device.');
+    setTimeout(() => {
+      setProfileFeedback(null);
+      onClose();
+    }, 600);
   };
 
   const handleTogglePlugin = (pluginId: string) => {
@@ -386,8 +421,8 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#131313]/96 backdrop-blur-2xl flex items-center justify-center p-4 lg:p-8 select-none animate-in fade-in duration-200">
-      <div className="relative w-full max-w-5xl h-[670px] bg-zinc-950/90 border border-white/20 rounded-[32px] overflow-hidden shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 nascent-app-bg flex items-center justify-center p-4 lg:p-8 select-none animate-in fade-in duration-200">
+      <div className="relative w-full max-w-7xl h-[min(920px,92vh)] bg-black/45 backdrop-blur-xl border border-white/20 rounded-[32px] overflow-hidden shadow-2xl flex flex-col">
         {/* Top Header */}
         <div className="px-8 py-4.5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -401,25 +436,10 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            {/* TV Remote Button inside Settings */}
-            <button
-              onClick={() => {
-                onToggleRemote?.();
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-semibold transition-all focus:ring-2 focus:ring-sky-400 focus:outline-none ${
-                isRemoteOpen
-                  ? 'bg-sky-500 text-black border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] font-bold'
-                  : 'bg-white/10 hover:bg-white/20 text-zinc-200 border-white/15'
-              }`}
-              title="Launch Android TV Virtual Remote"
-            >
-              <Gamepad2 className="w-4 h-4" />
-              <span>TV Remote {isRemoteOpen ? '(Active)' : ''}</span>
-            </button>
-
             <button
               onClick={onClose}
               className="p-2.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+              aria-label="Close settings"
             >
               <X className="w-5 h-5" />
             </button>
@@ -431,15 +451,14 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
           {/* Left Navigation Rail */}
           <div className="w-64 border-r border-white/10 p-4 flex flex-col gap-1.5 bg-black/40 overflow-y-auto no-scrollbar">
             {[
-              { id: 'profile', label: 'Profile & Account', icon: User, badge: currentProfile.initials },
-              { id: 'plugins', label: 'Plugins & Addons', icon: Puzzle, count: pluginsList.filter(p => p.isInstalled && p.enabled).length },
+              { id: 'profile', label: 'Profile & Account', icon: User },
               { id: 'remote', label: 'TV Remote & D-Pad', icon: Gamepad2 },
-              { id: 'audio-video', label: 'Display & Sound', icon: Sliders },
+              { id: 'audio-video', label: 'Display & Sound', icon: Palette },
               { id: 'playback', label: 'Playback & Video', icon: Film },
               { id: 'subtitles', label: 'Subtitles & Audio', icon: Languages },
-              { id: 'streaming', label: 'Nascent Engine', icon: Zap },
               { id: 'storage', label: 'Storage & Drives', icon: HardDrive },
               { id: 'network', label: 'Server & LAN', icon: Server },
+              { id: 'plugins', label: 'Plugins & Addons', icon: Puzzle, count: pluginsList.filter(p => p.isInstalled && p.enabled).length },
             ].map((cat) => {
               const Icon = cat.icon;
               const isActive = activeCategory === cat.id;
@@ -457,11 +476,6 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     <Icon className="w-4 h-4 flex-shrink-0" />
                     <span>{cat.label}</span>
                   </div>
-                  {cat.badge && (
-                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-sky-400'}`}>
-                      {cat.badge}
-                    </span>
-                  )}
                   {typeof cat.count === 'number' && (
                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${isActive ? 'bg-black/25 text-black' : 'bg-white/10 text-zinc-400'}`}>
                       {cat.count}
@@ -541,56 +555,15 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Switch or Add Profile */}
                   <div className="flex items-center gap-2 self-stretch md:self-center">
                     <button
-                      onClick={handleAddNewProfile}
+                      type="button"
+                      onClick={handleLogOut}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-zinc-200 hover:text-white border border-white/15 text-xs font-semibold transition-all cursor-pointer"
                     >
-                      <UserPlus className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Add Profile</span>
+                      <LogOut className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Log Out</span>
                     </button>
-                  </div>
-                </div>
-
-                {/* Profiles Switcher Row */}
-                <div>
-                  <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2.5">
-                    Viewer Profiles on this Device
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {profiles.map((p) => {
-                      const isSelected = p.id === activeProfileId;
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => {
-                            setActiveProfileId(p.id);
-                            setProfileNameInput(p.name);
-                            setEditingName(false);
-                            setProfileFeedback(`Switched profile to ${p.name}`);
-                            setTimeout(() => setProfileFeedback(null), 2500);
-                          }}
-                          className={`p-3.5 rounded-2xl border flex items-center gap-3 transition-all cursor-pointer text-left ${
-                            isSelected
-                              ? 'bg-sky-500/15 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
-                              : 'bg-white/5 border-white/10 hover:bg-white/10'
-                          }`}
-                        >
-                          <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${p.color} flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-md`}>
-                            {p.initials}
-                          </div>
-                          <div className="truncate min-w-0">
-                            <span className={`block font-semibold text-xs truncate ${isSelected ? 'text-sky-300 font-bold' : 'text-zinc-200'}`}>
-                              {p.name}
-                            </span>
-                            <span className="text-[10px] text-zinc-500">
-                              {p.isPrimary ? 'Primary Account' : p.isKid ? 'Kids Rating' : 'Household Member'}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
                   </div>
                 </div>
 
@@ -896,6 +869,69 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
             {activeCategory === 'audio-video' && (
               <div className="flex flex-col gap-6">
                 <div>
+                  <h3 className="font-display font-bold text-lg text-white mb-1 flex items-center gap-2">
+                    <Palette className="w-5 h-5 text-sky-400" />
+                    UI Theme
+                  </h3>
+                  <p className="text-xs text-zinc-400 mb-4">
+                    Choose the ambient look for the app shell, settings, and search. Saved on this device.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {UI_THEMES.map((theme) => {
+                      const isSelected = uiTheme === theme.id;
+                      return (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          onClick={() => {
+                            setUiTheme(theme.id);
+                            applyUiTheme(theme.id);
+                          }}
+                          className={`group relative p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-sky-500/15 border-sky-400 shadow-[0_0_18px_rgba(56,189,248,0.22)]'
+                              : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
+                          }`}
+                        >
+                          <div
+                            className="h-14 w-full rounded-xl mb-3 border border-white/10 overflow-hidden relative"
+                            style={{
+                              backgroundImage: `linear-gradient(135deg, ${theme.swatches[2]} 0%, ${theme.swatches[1]} 45%, ${theme.swatches[0]} 100%)`,
+                            }}
+                            aria-hidden
+                          >
+                            <div className="absolute inset-0 flex items-end justify-end gap-1 p-2">
+                              {theme.swatches.map((color) => (
+                                <span
+                                  key={color}
+                                  className="w-3.5 h-3.5 rounded-full border border-white/40 shadow-sm"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-sm font-semibold ${isSelected ? 'text-sky-300' : 'text-white'}`}>
+                              {theme.label}
+                            </span>
+                            {isSelected && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-sky-300">
+                                <Check className="w-3 h-3" />
+                                Active
+                              </span>
+                            )}
+                            {theme.id === 'midnight' && !isSelected && (
+                              <Moon className="w-3.5 h-3.5 text-zinc-500" aria-hidden />
+                            )}
+                          </div>
+                          <p className="text-[11px] text-zinc-400 mt-1 leading-snug">{theme.description}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Cinema Audio Equalizer</h3>
                   <p className="text-xs text-zinc-400 mb-4">Fine-tune frequencies for home cinema acoustics, TV speakers, and soundbars.</p>
 
@@ -1186,101 +1222,7 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               </div>
             )}
 
-            {/* 6. Nascent Engine & ABR */}
-            {activeCategory === 'streaming' && (
-              <div className="flex flex-col gap-6">
-                <div>
-                  <h3 className="font-display font-bold text-lg text-white mb-1">Nascent Streaming Engine</h3>
-                  <p className="text-xs text-zinc-400 mb-4">Hardware decoding, adaptive bitrate policies, and buffer cache.</p>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Hardware Acceleration</span>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-white">GPU Video Decoder (HEVC/AV1)</span>
-                        <button
-                          onClick={() => setHardwareAccel(!hardwareAccel)}
-                          className={`w-12 h-6 rounded-full transition-colors relative ${hardwareAccel ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                        >
-                          <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${hardwareAccel ? 'right-0.5' : 'left-0.5'}`} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Buffer Cache Size</span>
-                      <div className="flex items-center gap-2">
-                        {['256MB', '512MB', '1GB'].map((b) => (
-                          <button
-                            key={b}
-                            onClick={() => setBufferSize(b)}
-                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                              bufferSize === b
-                                ? 'bg-sky-500 text-black'
-                                : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                            }`}
-                          >
-                            {b}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-semibold text-white">Sub-50ms Fast Seek</h4>
-                        <p className="text-xs text-zinc-400">Prefetches I-frame keyframe packets</p>
-                      </div>
-                      <button
-                        onClick={() => setFastSeek(!fastSeek)}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${fastSeek ? 'bg-sky-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${fastSeek ? 'right-0.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-zinc-400 uppercase">Max Stream Resolution</span>
-                      <div className="flex items-center gap-2">
-                        {[
-                          { id: '4k', label: '4K Ultra HD' },
-                          { id: '1080p', label: '1080p FHD' },
-                          { id: 'auto', label: 'Auto ABR' },
-                        ].map((res) => (
-                          <button
-                            key={res.id}
-                            onClick={() => setMaxResolution(res.id as any)}
-                            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                              maxResolution === res.id ? 'bg-sky-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
-                            }`}
-                          >
-                            {res.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 p-5 rounded-2xl bg-sky-950/40 border border-sky-400/30 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-white">Full Telemetry HUD</h4>
-                      <p className="text-xs text-sky-300">Live bitrate graphs, dropping frame monitoring, and peer mesh</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        onClose();
-                        onOpenStreamingHUD();
-                      }}
-                      className="px-5 py-2.5 rounded-full bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-lg transition-all"
-                    >
-                      Open Telemetry HUD
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 7. Storage & Drives */}
+            {/* Storage & Drives */}
             {activeCategory === 'storage' && (
               <div className="flex flex-col gap-5">
                 <div>
@@ -1349,7 +1291,91 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
               <div className="flex flex-col gap-5">
                 <div>
                   <h3 className="font-display font-bold text-lg text-white mb-1">Local Server & Network Diagnostics</h3>
-                  <p className="text-xs text-zinc-400 mb-4">Port configuration, DLNA broadcast, and LAN peer synchronization.</p>
+                  <p className="text-xs text-zinc-400 mb-4">Built-in reverse proxy, port binding, DLNA, and LAN sync.</p>
+
+                  <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3 mb-4">
+                    <div className="flex items-center gap-3 mb-1">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Built-in Reverse Proxy</h4>
+                        <p className="text-xs text-zinc-400">Allowlisted HTTPS gateway · Range streaming · optional Basic auth</p>
+                      </div>
+                    </div>
+                    {proxyStatusError ? (
+                      <p className="text-xs text-rose-400">{proxyStatusError}</p>
+                    ) : proxyStatus ? (
+                      <>
+                        <div className="flex items-center justify-between text-xs text-zinc-300">
+                          <span>Outbound endpoint</span>
+                          <span className="font-mono text-zinc-200">{proxyStatus.endpoint}?url=…</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-zinc-300">
+                          <span>Allowlisted hosts</span>
+                          <span className="font-mono text-zinc-200">{proxyStatus.allowlistSize}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-zinc-300">
+                          <span>Gateway auth</span>
+                          <span className={`font-bold ${proxyStatus.gatewayEnabled ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {proxyStatus.gatewayEnabled
+                              ? `On · ${proxyStatus.gatewayUser}`
+                              : 'Off · set NASCENT_GATEWAY_PASSWORD'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-zinc-300">
+                          <span>Bind</span>
+                          <span className="font-mono text-zinc-200">{proxyStatus.host}:{proxyStatus.port}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-zinc-500">Loading proxy status…</p>
+                    )}
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3 mb-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">API Token</h4>
+                      <p className="text-xs text-zinc-400">
+                        Required only when the server sets <span className="font-mono">NASCENT_API_TOKEN</span>. Paste it here once per browser session — it is kept in this tab only and is never shipped in the app.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        value={apiTokenInput}
+                        onChange={(e) => {
+                          setApiTokenInput(e.target.value);
+                          setApiTokenSaved(false);
+                        }}
+                        placeholder={apiTokenSaved ? 'Token saved for this session' : 'Paste API token…'}
+                        autoComplete="off"
+                        className="flex-1 px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-sm text-white placeholder-white/30 focus:outline-none focus:border-sky-500 font-mono"
+                      />
+                      <button
+                        onClick={() => {
+                          setApiToken(apiTokenInput);
+                          setApiTokenSaved(apiTokenInput.trim().length > 0);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => {
+                          clearApiToken();
+                          setApiTokenInput('');
+                          setApiTokenSaved(false);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold transition"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {apiTokenSaved && (
+                      <p className="text-xs text-emerald-400">Token saved for this browser session.</p>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
@@ -1382,11 +1408,15 @@ export const TvSettingsModal: React.FC<TvSettingsModalProps> = ({
                   <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
                     <div className="flex items-center justify-between text-xs text-zinc-300">
                       <span>Server Status</span>
-                      <span className="font-bold text-emerald-400">Online · Port 3000 Active</span>
+                      <span className="font-bold text-emerald-400">
+                        Online · Port {proxyStatus?.port ?? 3000} Active
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-zinc-300">
-                      <span>LAN Address</span>
-                      <span className="font-mono text-zinc-200">192.168.1.104:3000</span>
+                      <span>Bind address</span>
+                      <span className="font-mono text-zinc-200">
+                        {proxyStatus ? `${proxyStatus.host}:${proxyStatus.port}` : '127.0.0.1:3000'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-zinc-300">
                       <span>Bandwidth Limit</span>

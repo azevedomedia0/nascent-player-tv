@@ -20,10 +20,7 @@ import {
   Usb,
   Network,
   Server,
-  X,
-  Puzzle,
-  Sparkles,
-  Lock
+  X
 } from 'lucide-react';
 import { TvTab } from './TvTopNav';
 import { AppLogo } from '../AppLogo';
@@ -58,7 +55,6 @@ interface TvSidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onOpenConnectModal: () => void;
-  onOpenPlugins?: () => void;
   localFilesCount?: number;
   onAddFolderSource?: (folder: LocalFolderSource) => void;
 }
@@ -72,7 +68,6 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
   isCollapsed,
   onToggleCollapse,
   onOpenConnectModal,
-  onOpenPlugins,
   localFilesCount: _localFilesCount = 3,
   onAddFolderSource,
 }) => {
@@ -275,8 +270,21 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
         isCollapsed ? 'items-center justify-center py-6 px-0 gap-4 overflow-hidden' : 'p-4 gap-6 overflow-y-auto no-scrollbar'
       }`}>
         {/* Brand + collapse control */}
-        <div className={`flex items-center gap-2 ${isCollapsed ? 'justify-center w-full px-0' : 'justify-between px-1'}`}>
-          {!isCollapsed && (
+        <div
+          className={`flex ${
+            isCollapsed
+              ? 'flex-col items-center justify-center gap-3 w-full px-0'
+              : 'items-center justify-between gap-2 px-1'
+          }`}
+        >
+          {isCollapsed ? (
+            <img
+              src="/assets/nascent-mark.png"
+              alt="Nascent Player"
+              className="w-11 h-auto object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.45)] select-none pointer-events-none"
+              draggable={false}
+            />
+          ) : (
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0">
                 <AppLogo className="w-full h-full" showBackground={false} />
@@ -292,7 +300,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           <button
             onClick={onToggleCollapse}
             className={`flex items-center justify-center shrink-0 ${
-              isCollapsed ? 'w-10 h-10 rounded-xl mx-auto' : 'w-8 h-8 rounded-full'
+              isCollapsed ? 'w-10 h-10 rounded-full mx-auto' : 'w-8 h-8 rounded-full'
             } bg-white/5 hover:bg-white/15 text-zinc-400 hover:text-white border border-white/10 transition-all focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer`}
             title={isCollapsed ? "Expand sidebar (M)" : "Collapse sidebar (M)"}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -320,7 +328,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
               title="Local Media Files (Direct Storage)"
             >
               <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
-                <div className={`flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
+                <div className={`flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-full ${
                   isLocalActive 
                     ? 'bg-sky-500 text-black shadow-md shadow-sky-500/30' 
                     : 'bg-white/10 text-sky-400'
@@ -398,7 +406,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
               title="Shared Libraries from other users"
             >
               <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-3 min-w-0'}`}>
-                <div className={`relative flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-lg ${
+                <div className={`relative flex items-center justify-center w-9 h-9 aspect-square flex-shrink-0 rounded-full ${
                   isSharedActive && !selectedPeerId
                     ? 'bg-pink-500 text-white' 
                     : 'bg-white/10 text-pink-400'
@@ -444,7 +452,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate min-w-0">
-                        <div className={`w-6 h-6 rounded-lg ${peer.avatarColor} text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                        <div className={`w-6 h-6 rounded-full ${peer.avatarColor} text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm`}>
                           {peer.avatarInitials}
                         </div>
                         <div className="flex flex-col truncate">
@@ -512,7 +520,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   title={`${dev.name} (${dev.freeSpace} • ${dev.itemCount} files)`}
                 >
                   <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${
+                    <div className={`flex items-center justify-center w-9 h-9 rounded-full transition-all ${
                       isSelected ? 'bg-yellow-400 text-black shadow-md shadow-yellow-500/20' : 'bg-yellow-400/10 text-yellow-400 group-hover:bg-yellow-400/20'
                     }`}>
                       <Usb className="w-4 h-4" />
@@ -572,7 +580,7 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
                   title={`${share.name} (${share.address} • ${share.itemCount} files)`}
                 >
                   <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${
+                    <div className={`flex items-center justify-center w-9 h-9 rounded-full transition-all ${
                       isSelected ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20' : 'bg-orange-500/10 text-orange-400 group-hover:bg-orange-500/20'
                     }`}>
                       <Server className="w-4 h-4" />
@@ -613,32 +621,6 @@ export const TvSidebar: React.FC<TvSidebarProps> = ({
           </div>
         </div>
 
-        {/* Community Addons & Plugins Entrypoint */}
-        {onOpenPlugins && (
-          <div className={`mt-auto pt-2 border-t border-white/10 ${isCollapsed ? 'w-full flex justify-center' : ''}`}>
-            <button
-              onClick={onOpenPlugins}
-              className={`group flex items-center ${
-                isCollapsed ? 'justify-center w-11 h-11 p-0 mx-auto' : 'w-full justify-between px-3.5 py-2.5'
-              } rounded-2xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 transition-all text-left focus:outline-none cursor-pointer`}
-              title="Community Plugins & Addons (Stremio Protocol)"
-            >
-              <div className={`flex items-center justify-center ${isCollapsed ? 'w-full h-full' : 'gap-2.5 truncate min-w-0'}`}>
-                <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 group-hover:scale-105 transition-transform shrink-0">
-                  <Puzzle className="w-5 h-5" />
-                </div>
-                {!isCollapsed && (
-                  <div className="flex flex-col truncate min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-white text-xs truncate">Community Addons</span>
-                    </div>
-                    <span className="text-[10px] text-indigo-300/70 font-normal truncate">Stremio Protocol v3</span>
-                  </div>
-                )}
-              </div>
-            </button>
-          </div>
-        )}
       </div>
     </aside>
 

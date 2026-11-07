@@ -17,18 +17,30 @@ import {
   clampBenchmarkBytes,
   MAX_UPLOAD_BYTES,
 } from "./src/lib/security";
+import {
+  gatewayAuthMiddleware,
+  getReverseProxyStatus,
+  isGatewayEnabled,
+  pipeProxyResponse,
+  proxyFetch,
+} from "./src/lib/reverseProxy";
 
 dotenv.config();
 
-// SECURITY: bind localhost by default. Set HOST=0.0.0.0 only behind a
-// reverse proxy that adds authentication — this server has no built-in
-// login, so exposing it directly also exposes every /api endpoint.
+// SECURITY: bind localhost by default. For LAN/remote access either put
+// the app behind an external reverse proxy, or enable the built-in
+// gateway (NASCENT_GATEWAY_PASSWORD) and optionally NASCENT_API_TOKEN.
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) || 3000 : 3000;
 const HOST = process.env.HOST || "127.0.0.1";
-// Optional shared token. When NASCENT_API_TOKEN is set, mutating API
-// calls and the sensitive GET endpoints (proxy, benchmark) require
-// `Authorization: Bearer <token>` or `x-api-token: <token>`.
-const API_TOKEN = process.env.NASCENT_API_TOKEN || "";
+// Shared API token. Mutating API calls and the sensitive GET endpoints
+// (proxy, benchmark) require `Authorization: Bearer <token>` or
+// `x-api-token: <token>`. The token is always set: NASCENT_API_TOKEN
+// wins when provided, otherwise it is read from data/api-token.txt, or
+// generated once and saved there (mode 0600) on first run — see
+// resolveApiToken() below. The app never needs a manually chosen token.
+let API_TOKEN = (process.env.NASCENT_API_TOKEN || "").trim();
+let API_TOKEN_SOURCE: "env" | "file" | "generated" | "none" =
+  API_TOKEN ? "env" : "none";
 const app = express();
 
 app.disable("x-powered-by");
@@ -36,6 +48,10 @@ app.disable("x-powered-by");
 // call here needs. Uploads use a raw stream, not JSON, so 1 MB is ample.
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+// Built-in reverse-proxy front door: HTTP Basic Auth for the whole app
+// when NASCENT_GATEWAY_PASSWORD is set (see SECURITY.md).
+app.use(gatewayAuthMiddleware);
 
 // Minimal security headers (no extra dependency).
 app.use((req, res, next) => {
@@ -52,6 +68,7 @@ const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
 function rateLimit(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!req.path.startsWith("/api/")) return next();
   const sensitive =
+    req.path.startsWith("/api/proxy") ||
     req.path.startsWith("/api/stremio/proxy") ||
     req.path.startsWith("/api/metadata/enrich") ||
     req.path.startsWith("/api/upload") ||
@@ -74,15 +91,26 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
 }
 app.use(rateLimit);
 
-// Optional token auth (see API_TOKEN above). Off by default so local
-// use is unchanged; enable it before exposing the server anywhere.
+// Token auth (see API_TOKEN above). Always on: the token is either
+// set via NASCENT_API_TOKEN or auto-generated and saved to
+// data/api-token.txt on first run, so the API is never wide open —
+// even on localhost. The browser app sends it from Settings →
+// Server & LAN → API Token (kept in that tab's sessionStorage).
 app.use("/api", (req, res, next) => {
   if (!API_TOKEN) return next();
+  // Status is always readable so Settings can show proxy state.
+  if (req.method === "GET" && req.path === "/proxy/status") return next();
   const sensitiveGet =
     req.method === "GET" &&
-    (req.path.startsWith("/stremio/proxy") || req.path.startsWith("/stream/benchmark"));
+    (req.path.startsWith("/proxy") ||
+      req.path.startsWith("/stremio/proxy") ||
+      req.path.startsWith("/stream/benchmark"));
   if (req.method === "GET" && !sensitiveGet) return next();
-  const supplied = req.get("authorization")?.replace(/^Bearer\s+/i, "") || req.get("x-api-token") || "";
+  const auth = req.get("authorization") || "";
+  const bearer = /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, "") : "";
+  // Prefer Bearer; fall back to x-api-token so Basic gateway auth can
+  // coexist (browsers only send one Authorization header).
+  const supplied = bearer || req.get("x-api-token") || "";
   if (supplied !== API_TOKEN) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -102,6 +130,50 @@ if (!fs.existsSync(DATA_DIR)) {
 if (!fs.existsSync(MEDIA_DIR)) {
   fs.mkdirSync(MEDIA_DIR, { recursive: true });
 }
+
+// API token, resolved once at startup (see the API_TOKEN declaration
+// above). Precedence: NASCENT_API_TOKEN env var → data/api-token.txt
+// from a previous run → generate a fresh random token and save it.
+// The file is gitignored (see .gitignore) and written mode 0600 so
+// only the server's user can read it. A generated token is printed
+// once in the startup log — that is the only time it appears there;
+// on later starts it is read back from the file, so it survives
+// restarts and the token pasted in the app's Settings keeps working.
+const API_TOKEN_FILE = path.join(DATA_DIR, "api-token.txt");
+function resolveApiToken(): string {
+  if (API_TOKEN) return API_TOKEN;
+  try {
+    if (fs.existsSync(API_TOKEN_FILE)) {
+      const saved = fs.readFileSync(API_TOKEN_FILE, "utf8").trim();
+      if (saved) {
+        API_TOKEN_SOURCE = "file";
+        return saved;
+      }
+    }
+  } catch {
+    // Unreadable file — fall through and generate a new token below.
+  }
+  const generated = crypto.randomBytes(32).toString("hex");
+  try {
+    fs.writeFileSync(API_TOKEN_FILE, `${generated}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.warn(
+      `[IINA SERVER] WARNING: could not save the generated API token to ${API_TOKEN_FILE} (${(err as Error).message}). ` +
+        "Token auth is off for this run — set NASCENT_API_TOKEN to enable it."
+    );
+    API_TOKEN_SOURCE = "none";
+    return "";
+  }
+  API_TOKEN_SOURCE = "generated";
+  console.log("[IINA SERVER] No NASCENT_API_TOKEN was set — generated one automatically:");
+  console.log(`[IINA SERVER]   ${generated}`);
+  console.log(
+    `[IINA SERVER] Saved to ${API_TOKEN_FILE} — paste it in the app under ` +
+      "Settings → Server & LAN → API Token (kept in that browser tab only)."
+  );
+  return generated;
+}
+API_TOKEN = resolveApiToken();
 
 // In-memory sync partitions (Watch parties are active sessions)
 const watchParties: Record<string, any> = {};
@@ -1150,6 +1222,50 @@ app.delete("/api/history", (req, res) => {
   res.json({ success: true });
 });
 
+// Built-in reverse proxy — allowlisted HTTPS outbound gateway for media,
+// posters, and addon payloads. Supports Range requests for video seeking.
+// Hosts: Stremio addon allowlist + DEFAULT_MEDIA_PROXY_ALLOWLIST + PROXY_ALLOWLIST.
+app.get("/api/proxy/status", (_req, res) => {
+  res.json(getReverseProxyStatus());
+});
+
+app.options("/api/proxy", (_req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Range, Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  res.status(204).end();
+});
+
+app.get("/api/proxy", async (req, res) => {
+  try {
+    const headers: Record<string, string> = {
+      "User-Agent": "Nascent-Player-TV/1.0 (built-in reverse proxy)",
+      Accept: "*/*",
+    };
+    const range = req.get("range");
+    if (range) headers.Range = range;
+
+    const { response } = await proxyFetch(req.query.url, {
+      headers,
+      timeoutMs: 20_000,
+    });
+    await pipeProxyResponse(response, res);
+  } catch (err: any) {
+    const message = err?.message || "Proxy request failed";
+    const status =
+      message.includes("not allowed") ||
+      message.includes("must use") ||
+      message.includes("Invalid") ||
+      message.includes("Missing")
+        ? 400
+        : 502;
+    if (!res.headersSent) {
+      res.status(status).json({ error: message });
+    }
+  }
+});
+
 // Stremio Addon universal proxy to bypass CORS
 // SECURITY: this was an open SSRF proxy — any caller could make the
 // server fetch an arbitrary URL, including cloud metadata
@@ -1158,6 +1274,7 @@ app.delete("/api/history", (req, res) => {
 // allowlist (bundled addon hosts, plus STREMIO_PROXY_ALLOWLIST), with
 // a 10 s timeout and a 5 MB response cap. Addon hosts not on the list
 // are rejected with 400 — add them explicitly via the env var.
+// For general media/CDN proxying use /api/proxy instead.
 app.get("/api/stremio/proxy", async (req, res) => {
   let target: URL;
   try {
@@ -1654,11 +1771,26 @@ async function startServer() {
 
   server.listen(PORT, HOST, () => {
     console.log(`[IINA SERVER] Streaming container online on http://${HOST}:${PORT}`);
-    if (HOST === "0.0.0.0") {
+    console.log(`[IINA SERVER] Built-in reverse proxy: GET /api/proxy?url=…`);
+    if (API_TOKEN_SOURCE === "env") {
+      console.log("[IINA SERVER] API token auth enabled (NASCENT_API_TOKEN from environment).");
+    } else if (API_TOKEN_SOURCE === "file") {
+      console.log(
+        `[IINA SERVER] API token auth enabled (token saved in ${API_TOKEN_FILE} — ` +
+          "paste it in Settings → Server & LAN → API Token if the app asks for one)."
+      );
+    } else if (API_TOKEN_SOURCE === "generated") {
+      console.log("[IINA SERVER] API token auth enabled (token generated on this first run — see above).");
+    }
+    if (isGatewayEnabled()) {
+      console.log(
+        `[IINA SERVER] Gateway auth enabled (HTTP Basic) — user "${getReverseProxyStatus().gatewayUser}"`
+      );
+    } else if (HOST === "0.0.0.0") {
       console.warn(
-        "[IINA SERVER] WARNING: listening on all interfaces with no built-in " +
-          "authentication. Put it behind a reverse proxy with auth, or set " +
-          "NASCENT_API_TOKEN and HOST=127.0.0.1. See SECURITY.md."
+        "[IINA SERVER] WARNING: listening on all interfaces with no gateway " +
+          "auth. Set NASCENT_GATEWAY_PASSWORD (built-in reverse-proxy login), " +
+          "or put nginx/Caddy in front. See SECURITY.md."
       );
     }
   });

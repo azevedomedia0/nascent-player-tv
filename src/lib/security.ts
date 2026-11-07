@@ -7,8 +7,8 @@
  * API route, removed in the dead-code cleanup of 2026-11-06.)
  *
  * Threat model: this is a local media server. It is safe on localhost.
- * It is NOT safe to expose directly to the internet without a reverse
- * proxy that adds authentication — see SECURITY.md.
+ * For remote access use the built-in gateway (NASCENT_GATEWAY_PASSWORD)
+ * or an external reverse proxy — see SECURITY.md and reverseProxy.ts.
  */
 
 import path from "path";

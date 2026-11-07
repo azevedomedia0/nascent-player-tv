@@ -9,11 +9,9 @@ import {
   ArrowLeft, 
   Award,
   Zap,
-  Radio,
+  Network,
   Tv,
   Layers,
-  Globe,
-  HardDrive,
   Sparkles,
   ExternalLink,
   ListPlus,
@@ -24,6 +22,71 @@ import { UserCustomList } from './TvSearchModal';
 import { fetchImdbMetadata, getActorHeadshot, enrichCastArray, CastMember } from '../../lib/imdbService';
 import { getAvailableSeasons, getEpisodesForSeason, isTvSeries } from '../../lib/tvEpisodeData';
 import { TvStreamSelectorModal, StreamSource } from './TvStreamSelectorModal';
+import { LOCAL_MEDIA_FILES, SHARED_PEER_LIBRARIES } from '../../lib/tvMediaData';
+
+/** Strip quality tags / punctuation for library title matching */
+const normalizeMediaTitle = (title: string) =>
+  title
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+
+/** Parse "2h 46m" / minutes-or-seconds numbers → minutes */
+const parseDurationToMinutes = (value: string | number | undefined | null): number | null => {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value > 500 ? Math.round(value / 60) : Math.round(value);
+  }
+  const h = value.match(/(\d+)\s*h/i);
+  const m = value.match(/(\d+)\s*m/i);
+  if (!h && !m) return null;
+  return (h ? parseInt(h[1], 10) * 60 : 0) + (m ? parseInt(m[1], 10) : 0);
+};
+
+type LibraryVideoMatch = {
+  title: string;
+  durationMinutes: number;
+  sourceLabel: string;
+  connectionDetail: string;
+};
+
+const findLibraryVideoMatch = (movie: FeaturedMovie): LibraryVideoMatch | null => {
+  const movieTitle = normalizeMediaTitle(movie.title);
+  const movieMinutes = parseDurationToMinutes(movie.duration);
+  if (!movieTitle || movieMinutes == null) return null;
+
+  const candidates: LibraryVideoMatch[] = [
+    ...LOCAL_MEDIA_FILES.map((f) => ({
+      title: f.title,
+      durationMinutes: parseDurationToMinutes(f.duration) ?? -1,
+      sourceLabel: 'Local Library',
+      connectionDetail: `${f.path} • ${f.bitrate} • ${f.audioTrack}`,
+    })),
+    ...SHARED_PEER_LIBRARIES.flatMap((peer) =>
+      peer.media.map((m) => ({
+        title: m.title,
+        durationMinutes: parseDurationToMinutes(m.duration) ?? -1,
+        sourceLabel: peer.name,
+        connectionDetail: `${peer.connectionType} • ${peer.bandwidth} • ${peer.location}`,
+      }))
+    ),
+  ].filter((c) => c.durationMinutes > 0);
+
+  const match = candidates.find((c) => {
+    const libTitle = normalizeMediaTitle(c.title);
+    const titleHit =
+      libTitle === movieTitle ||
+      libTitle.includes(movieTitle) ||
+      movieTitle.includes(libTitle);
+    if (!titleHit) return false;
+    return Math.abs(c.durationMinutes - movieMinutes) <= 3;
+  });
+
+  return match ?? null;
+};
 
 interface TvDetailModalProps {
   movie: FeaturedMovie | null;
@@ -60,6 +123,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
   const [isCreatingList, setIsCreatingList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [isStreamSelectorOpen, setIsStreamSelectorOpen] = useState(false);
+  const [showWatchNowPanel, setShowWatchNowPanel] = useState(false);
   const [isFetchingImdb, setIsFetchingImdb] = useState(false);
   const [currentCast, setCurrentCast] = useState<CastMember[]>(() => {
     return enrichCastArray(movie.cast || []);
@@ -152,137 +216,231 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
     };
   }, [movie?.id, movie?.title]);
 
-  // Compute all various Watch Now options along with any add-ons
+  // Reset Watch Now panel when the inspected title changes
+  useEffect(() => {
+    setShowWatchNowPanel(false);
+  }, [movie?.id]);
+
+  // Popular streaming first (custom brand buttons), then Nascent / add-on alternatives
   const watchNowOptions = useMemo(() => {
     if (!movie) return [];
 
-    const options: Array<{
+    type WatchOption = {
       id: string;
       label: string;
       details: string;
       badge: string;
       badgeColor: string;
       icon: React.ReactNode;
+      brandButtonSrc?: string;
       isPrimary?: boolean;
       isAddon?: boolean;
-    }> = [
-      {
-        id: 'direct-master',
-        label: 'Nascent 4K Direct Master',
-        details: 'HEVC Main 10 • 48.5 Mbps • Dolby Atmos 7.1 • Zero Transcode',
-        badge: 'Cinema Master',
-        badgeColor: 'bg-sky-500/20 text-sky-300 border border-sky-500/30',
-        icon: <Play className="w-4 h-4 fill-current text-sky-400" />,
-        isPrimary: true,
-        isAddon: false
-      }
-    ];
+    };
 
+    const options: WatchOption[] = [];
     const mid = movie.id.toLowerCase();
     const title = movie.title.toLowerCase();
 
     if (mid.includes('disney') || title.includes('star wars') || title.includes('mandalorian') || title.includes('inside out') || title.includes('avengers') || title.includes('loki') || title.includes('moana') || title.includes('bluey') || title.includes('pixar') || title.includes('lion king')) {
       options.push({
         id: 'disney-plus',
-        label: 'Disney+ IMAX Enhanced Stream',
+        label: 'Disney+',
         details: '4K HDR • 1.90:1 Expanded Aspect Ratio • Dolby Atmos Audio',
-        badge: 'Disney+ IMAX',
+        badge: '',
         badgeColor: 'bg-blue-600/20 text-blue-300 border border-blue-500/30',
-        icon: <Tv className="w-4 h-4 text-blue-400" />,
-        isPrimary: false
+        icon: (
+          <img
+            src="/assets/disney-plus-icon.png"
+            alt="Disney+"
+            className="w-8 h-8 object-cover"
+            draggable={false}
+          />
+        ),
+        isPrimary: true
       });
     } else if (mid.includes('prime') || title.includes('boys') || title.includes('fallout') || title.includes('reacher') || title.includes('road house') || title.includes('invincible') || title.includes('rings of power')) {
       options.push({
         id: 'amazon-prime',
-        label: 'Prime Video 4K HDR10+ Stream',
+        label: 'Prime Video',
         details: '4K HDR10+ • X-Ray Actor Scene Trivia & Director Insights',
-        badge: 'Prime Video',
+        badge: '',
         badgeColor: 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/30',
         icon: <Tv className="w-4 h-4 text-cyan-400" />,
-        isPrimary: false
+        brandButtonSrc: '/assets/platforms/prime-video.png',
+        isPrimary: true
       });
     } else if (mid.includes('apple') || title.includes('severance') || title.includes('ted lasso') || title.includes('slow horses') || title.includes('silo') || title.includes('napoleon') || title.includes('killers of the flower moon')) {
       options.push({
         id: 'apple-tv',
-        label: 'Apple TV+ Master 4K Stream',
+        label: 'Apple TV+',
         details: '4K Dolby Vision • Lossless Spatial Audio & Dynamic Ambilight',
-        badge: 'Apple TV+',
+        badge: '',
         badgeColor: 'bg-zinc-600/30 text-zinc-200 border border-zinc-500/30',
         icon: <Tv className="w-4 h-4 text-zinc-300" />,
-        isPrimary: false
+        brandButtonSrc: '/assets/platforms/apple-tv.png',
+        isPrimary: true
       });
     } else if (title.includes('shogun') || title.includes('the bear') || title.includes('fargo') || title.includes('deadpool') || title.includes('poor things')) {
       options.push({
         id: 'hulu-official',
-        label: 'Hulu UHD Master Stream',
+        label: 'Hulu',
         details: '4K UHD • 5.1 Surround Sound • Official Network Cloud',
-        badge: 'Hulu UHD',
+        badge: '',
         badgeColor: 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30',
         icon: <Tv className="w-4 h-4 text-emerald-400" />,
-        isPrimary: false
+        brandButtonSrc: '/assets/platforms/hulu.png',
+        isPrimary: true
       });
     } else if (title.includes('dune') || title.includes('last of us') || title.includes('civil war') || title.includes('oppenheimer') || title.includes('succession') || title.includes('house of the dragon')) {
       options.push({
         id: 'hbo-max',
-        label: 'HBO Max Premiere Stream',
+        label: 'HBO Max',
         details: '4K UHD • Dolby Atmos • IMAX Enhanced Home Master',
-        badge: 'HBO Max',
+        badge: '',
         badgeColor: 'bg-purple-600/20 text-purple-300 border border-purple-500/30',
         icon: <Tv className="w-4 h-4 text-purple-400" />,
-        isPrimary: false
+        brandButtonSrc: '/assets/platforms/hbo-max.png',
+        isPrimary: true
+      });
+    } else if (
+      mid.includes('paramount') ||
+      title.includes('gladiator') ||
+      title.includes('maxxxine') ||
+      title.includes('babygirl') ||
+      title.includes('pearl') ||
+      title.includes('warfare') ||
+      title.includes('top gun') ||
+      title.includes('sonic') ||
+      title.includes('yellowstone') ||
+      title.includes('mission: impossible') ||
+      title.includes('mission impossible')
+    ) {
+      options.push({
+        id: 'paramount-plus',
+        label: 'Paramount+',
+        details: '4K UHD • Dolby Atmos • Paramount Original Master',
+        badge: '',
+        badgeColor: 'bg-sky-600/20 text-sky-200 border border-sky-500/30',
+        icon: <Tv className="w-4 h-4 text-sky-300" />,
+        brandButtonSrc: '/assets/platforms/paramount-plus.png',
+        isPrimary: true
+      });
+    } else if (
+      mid.includes('peacock') ||
+      title.includes('heretic') ||
+      title.includes('uncut gems') ||
+      title.includes('beau is afraid') ||
+      title.includes('past lives') ||
+      title.includes('bel-air') ||
+      title.includes('twilight') ||
+      title.includes('happy gilmore') ||
+      title.includes('the office') ||
+      title.includes('parks and recreation')
+    ) {
+      options.push({
+        id: 'peacock',
+        label: 'Peacock',
+        details: '4K UHD • Ad-Light Premium • NBCUniversal Master',
+        badge: '',
+        badgeColor: 'bg-yellow-500/20 text-yellow-200 border border-yellow-500/30',
+        icon: <Tv className="w-4 h-4 text-yellow-300" />,
+        brandButtonSrc: '/assets/platforms/peacock.png',
+        isPrimary: true
+      });
+    } else if (
+      mid.includes('fubo') ||
+      title.includes('champions league') ||
+      title.includes('premier league') ||
+      title.includes('world cup') ||
+      title.includes('nba finals') ||
+      title.includes('super bowl') ||
+      title.includes('ufc') ||
+      title.includes('formula 1') ||
+      title.includes('f1')
+    ) {
+      options.push({
+        id: 'fubo',
+        label: 'fuboTV',
+        details: 'Live Sports • Multi-View • Cloud DVR Replay',
+        badge: '',
+        badgeColor: 'bg-orange-500/20 text-orange-300 border border-orange-500/30',
+        icon: <Tv className="w-4 h-4 text-orange-400" />,
+        brandButtonSrc: '/assets/platforms/fubo.png',
+        isPrimary: true
+      });
+    } else if (
+      mid.includes('pluto') ||
+      title.includes('baywatch') ||
+      title.includes('jerry springer') ||
+      title.includes('forensic files') ||
+      title.includes('star trek') ||
+      title.includes('csi') ||
+      title.includes('ncis') ||
+      title.includes('cheaters')
+    ) {
+      options.push({
+        id: 'pluto-tv',
+        label: 'Pluto TV',
+        details: 'Free AVOD • Live Channels • On-Demand Library',
+        badge: '',
+        badgeColor: 'bg-yellow-400/20 text-yellow-200 border border-yellow-400/30',
+        icon: <Tv className="w-4 h-4 text-yellow-300" />,
+        brandButtonSrc: '/assets/platforms/pluto-tv.png',
+        isPrimary: true
+      });
+    } else if (
+      mid.includes('google-play') ||
+      mid.includes('play-movies') ||
+      mid.includes('google') ||
+      title.includes('google play')
+    ) {
+      options.push({
+        id: 'google-play-movies',
+        label: 'Google Play Movies',
+        details: '4K UHD • Buy or Rent • Cross-Device Playback',
+        badge: '',
+        badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+        icon: <Tv className="w-4 h-4 text-emerald-400" />,
+        brandButtonSrc: '/assets/platforms/google-play.png',
+        isPrimary: true
       });
     } else {
       options.push({
         id: 'netflix-official',
-        label: 'Netflix 4K Dolby Vision',
+        label: 'Netflix',
         details: '4K Ultra HD • Spatial Audio • Official Cloud Stream',
-        badge: 'Netflix 4K',
+        badge: '',
         badgeColor: 'bg-red-600/20 text-red-300 border border-red-500/30',
         icon: <Tv className="w-4 h-4 text-red-400" />,
-        isPrimary: false
+        brandButtonSrc: '/assets/platforms/netflix.png',
+        isPrimary: true
       });
     }
 
-    // Community Add-ons & Alternative Streams
     options.push({
       id: 'addon-torrentio',
-      label: '[Torrentio Add-on] 4K HDR Remux Stream',
+      label: 'Torrentio Add-on',
       details: 'YTS / 1337x P2P Cache • 18.4 GB • 214 Active Seeders (Zero Buffer)',
-      badge: 'Add-on: Torrentio',
+      badge: '',
       badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
       icon: <Zap className="w-4 h-4 text-purple-400" />,
+      brandButtonSrc: '/assets/platforms/real-debrid.png',
       isAddon: true
     });
 
-    options.push({
-      id: 'addon-mesh-peer',
-      label: "[Mesh P2P Add-on] Steven's 4K Vault Shared Node",
-      details: 'Direct LAN Peer Mesh • 98 Mbps Gigabit Link • Lossless Audio Pass',
-      badge: 'Add-on: P2P Mesh',
-      badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
-      icon: <Radio className="w-4 h-4 text-amber-400" />,
-      isAddon: true
-    });
-
-    options.push({
-      id: 'addon-cinemeta',
-      label: '[Cinemeta Add-on] WebSeed CDN Fast Stream',
-      details: 'Decentralized Web CDN Stream • 1080p 60FPS • Fast Start',
-      badge: 'Add-on: Cinemeta',
-      badgeColor: 'bg-teal-500/20 text-teal-300 border border-teal-500/30',
-      icon: <Globe className="w-4 h-4 text-teal-400" />,
-      isAddon: true
-    });
-
-    options.push({
-      id: 'addon-mali-gpu',
-      label: '[Mali GPU Add-on] 1080p Adaptive ABR Transcode',
-      details: 'Hardware Transcode Bus • Optimized for Low-Bandwidth Streaming',
-      badge: 'Add-on: Transcode',
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
-      icon: <HardDrive className="w-4 h-4 text-emerald-400" />,
-      isAddon: true
-    });
+    const libraryMatch = findLibraryVideoMatch(movie);
+    if (libraryMatch) {
+      options.push({
+        id: 'addon-mesh-peer',
+        label: `P2P Mesh · ${libraryMatch.sourceLabel}`,
+        details: libraryMatch.connectionDetail,
+        badge: '',
+        badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+        icon: <Network className="w-4 h-4 text-amber-400" />,
+        brandButtonSrc: '/assets/platforms/p2p-mesh.png',
+        isAddon: true
+      });
+    }
 
     return options;
   }, [movie]);
@@ -484,17 +642,24 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
             )}
           </div>
 
-          {/* Action Buttons - All Pill Shaped */}
-          <div className="flex flex-wrap items-center gap-3.5 my-5">
-            {/* Watch Now button triggers Stremio/Nuvio streaming platforms list */}
+          {/* Action Buttons — single row */}
+          <div className="flex flex-nowrap items-center gap-2 my-5 overflow-x-auto no-scrollbar">
+            {/* Watch Now toggles inline stream options panel below */}
             <button
-              onClick={() => {
-                setIsStreamSelectorOpen(true);
-              }}
-              className="flex items-center gap-2.5 px-7 py-3.5 rounded-full bg-white hover:bg-sky-400 text-black font-extrabold text-sm shadow-xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400"
+              type="button"
+              onClick={() => setShowWatchNowPanel((prev) => !prev)}
+              aria-expanded={showWatchNowPanel}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full font-extrabold text-xs sm:text-sm shadow-xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400 whitespace-nowrap shrink-0 ${
+                showWatchNowPanel
+                  ? 'bg-sky-400 text-black ring-2 ring-sky-300/60'
+                  : 'bg-white hover:bg-sky-400 text-black'
+              }`}
             >
-              <Play className="w-4 h-4 fill-current ml-0.5" />
+              <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
               <span>Watch Now</span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 transition-transform duration-200 ${showWatchNowPanel ? 'rotate-180' : ''}`}
+              />
             </button>
 
             <button
@@ -502,15 +667,15 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                 onPlayTrailer(movie);
                 onClose();
               }}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-sm border border-white/20 transition-all transform hover:scale-105"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 transition-all transform hover:scale-105 whitespace-nowrap shrink-0"
             >
-              <Film className="w-4 h-4 text-sky-400" />
+              <Film className="w-3.5 h-3.5 text-sky-400" />
               <span>Trailer</span>
             </button>
 
             <button
               onClick={() => onToggleWatchlist(movie.id)}
-              className={`flex items-center gap-2 px-6 py-3.5 rounded-full font-semibold text-sm border transition-all transform hover:scale-105 ${
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-full font-semibold text-xs sm:text-sm border transition-all transform hover:scale-105 whitespace-nowrap shrink-0 ${
                 isWatchlistActive
                   ? 'bg-sky-500/20 border-sky-400 text-sky-300'
                   : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
@@ -518,12 +683,12 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
             >
               {isWatchlistActive ? (
                 <>
-                  <Check className="w-4 h-4 text-sky-400" />
+                  <Check className="w-3.5 h-3.5 text-sky-400" />
                   <span>In Watchlist</span>
                 </>
               ) : (
                 <>
-                  <Plus className="w-4 h-4 text-zinc-300" />
+                  <Plus className="w-3.5 h-3.5 text-zinc-300" />
                   <span>Watchlist</span>
                 </>
               )}
@@ -534,14 +699,69 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
                 onOpenWatchParty(movie);
                 onClose();
               }}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-sm border border-white/20 transition-all transform hover:scale-105"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm border border-white/20 transition-all transform hover:scale-105 whitespace-nowrap shrink-0"
             >
-              <Users className="w-4 h-4 text-indigo-400" />
+              <Users className="w-3.5 h-3.5 text-indigo-400" />
               <span>Watch Party</span>
             </button>
           </div>
 
-          {/* Season and Episode List Component */}
+          {/* Watch Now options panel — custom brand source buttons */}
+          {showWatchNowPanel && (
+            <div className="mb-5 -mt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-baseline justify-between gap-3 mb-3.5">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                  Available to watch
+                </h3>
+                <span className="text-[11px] text-zinc-600">
+                  {watchNowOptions.length} {watchNowOptions.length === 1 ? 'source' : 'sources'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 sm:gap-3.5">
+                {watchNowOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      onPlay(movie);
+                      onClose();
+                    }}
+                    aria-label={opt.label}
+                    title={opt.label}
+                    className="group relative inline-flex items-center justify-center rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#131313] transition-transform duration-200 hover:scale-[1.045] active:scale-[0.97]"
+                  >
+                    {opt.brandButtonSrc ? (
+                      <>
+                        <span
+                          className="pointer-events-none absolute inset-0 rounded-full bg-sky-400/0 blur-xl transition-all duration-300 group-hover:bg-sky-400/20"
+                          aria-hidden
+                        />
+                        <img
+                          src={opt.brandButtonSrc}
+                          alt=""
+                          className="relative h-11 w-auto max-w-[168px] object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:brightness-110 transition-[filter] duration-200"
+                          draggable={false}
+                        />
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-2.5 h-11 px-4 rounded-full bg-zinc-950/80 border border-white/12 text-xs font-semibold text-white shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md group-hover:border-sky-400/40 group-hover:bg-zinc-900 transition-colors">
+                        <span className="shrink-0 opacity-90">{opt.icon}</span>
+                        <span className="truncate max-w-[10rem]">{opt.label}</span>
+                        {opt.badge ? (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${opt.badgeColor}`}>
+                            {opt.badge}
+                          </span>
+                        ) : null}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Season and Episode List — TV series only */}
+          {isTvSeries(movie) && (
           <div className="my-4 p-5 rounded-3xl bg-white/[0.04] border border-white/10 backdrop-blur-md">
             {/* Header with Season Selector Tabs */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-white/10">
@@ -730,6 +950,7 @@ export const TvDetailModal: React.FC<TvDetailModalProps> = ({
               </div>
             )}
           </div>
+          )}
 
           {/* Synopsis */}
           <div className="my-3">

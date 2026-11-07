@@ -3,33 +3,54 @@
 ## Threat model
 
 Nascent Player TV is a **local media server**. It is safe on localhost
-(`HOST=127.0.0.1`, the default). It has **no built-in login**, so it is
-**not safe to expose directly to the internet or an untrusted network**.
+(`HOST=127.0.0.1`, the default). Without gateway credentials it has
+**no login**, so it is **not safe to expose directly to the internet**.
 
-If you need remote access, put it behind a reverse proxy (Caddy, nginx,
-Cloudflare Tunnel, Tailscale, etc.) that adds authentication, and set
-`NASCENT_API_TOKEN` as a second layer — see below. Do not just set
-`HOST=0.0.0.0` and port-forward it.
+If you need remote or LAN access, either:
+
+1. **Built-in reverse proxy gateway** — set `NASCENT_GATEWAY_PASSWORD`
+   (and optionally `NASCENT_GATEWAY_USER`). The server then requires
+   HTTP Basic Auth for every request, including the SPA. Combined with
+   `HOST=0.0.0.0` this is the simplest way to share the player on a
+   trusted network without installing nginx/Caddy.
+2. **External reverse proxy** — Caddy, nginx, Cloudflare Tunnel,
+   Tailscale, etc., plus `NASCENT_API_TOKEN` as a second layer.
+
+Do not set `HOST=0.0.0.0` and port-forward with neither option enabled.
+
+## Built-in reverse proxy
+
+The app ships with an outbound + inbound reverse proxy:
+
+- **Outbound** — `GET /api/proxy?url=…` fetches allowlisted `https://`
+  hosts (Stremio addon hosts, common media/CDN hosts, plus anything in
+  `PROXY_ALLOWLIST` / `STREMIO_PROXY_ALLOWLIST`). Supports `Range` for
+  video seeking, re-validates redirects, times out after 20 s, and caps
+  responses at 200 MB. Status: `GET /api/proxy/status`.
+- **Stremio JSON** — `/api/stremio/proxy` remains the JSON addon proxy
+  (5 MB cap, Stremio allowlist only).
+- **Inbound gateway** — when `NASCENT_GATEWAY_PASSWORD` is set, HTTP
+  Basic Auth gates the whole app (see above).
+
+Client helper: `viaReverseProxy(url)` in `src/lib/proxyUrl.ts`.
 
 ## What is protected (fixed 2026-11-06)
 
 All of these apply to the Express backend in `server.ts`, via the
-shared helpers in `src/lib/security.ts`. (The SvelteKit duplicate API
-route that used to carry the same flaws was deleted in the dead-code
-cleanup of 2026-11-06, so there is now a single backend to patch.)
+shared helpers in `src/lib/security.ts` and `src/lib/reverseProxy.ts`.
+(The SvelteKit duplicate API route that used to carry the same flaws
+was deleted in the dead-code cleanup of 2026-11-06, so there is now a
+single backend to patch.)
 
 - **Localhost by default.** The server binds `127.0.0.1:3000` unless
-  `HOST` is set. Binding `0.0.0.0` prints a warning at startup.
-- **SSRF proxy allowlist.** `/api/stremio/proxy` only fetches `https://`
-  URLs on an explicit hostname allowlist (the bundled addon hosts:
-  Cinemeta, Torrentio, OpenSubtitles, AnimeKitsu, Podcasts, Cyberflix).
-  IP literals, `localhost`, embedded credentials, and non-HTTPS URLs
-  are rejected, redirects are re-validated against the same list, and
-  fetches time out after 10 s with a 5 MB response cap. Add hosts only
-  via `STREMIO_PROXY_ALLOWLIST` — never a wildcard or an internal host.
-  Note: an allowlisted host could in theory DNS-rebind to a private IP;
-  the allowlist plus localhost binding is the mitigation, not a proof
-  against a malicious addon host.
+  `HOST` is set. Binding `0.0.0.0` without gateway auth prints a warning.
+- **SSRF proxy allowlist.** `/api/stremio/proxy` and `/api/proxy` only
+  fetch `https://` URLs on an explicit hostname allowlist. IP literals,
+  `localhost`, embedded credentials, and non-HTTPS URLs are rejected;
+  redirects are re-validated. Add hosts only via env allowlists — never
+  a wildcard or an internal host. Note: an allowlisted host could in
+  theory DNS-rebind to a private IP; the allowlist plus localhost
+  binding is the mitigation, not a proof against a malicious addon host.
 - **Path traversal.** `/api/stream` and `DELETE /api/media/:id` resolve
   filenames with `resolveMediaPath()`, which rejects `../`, absolute
   paths, and anything outside `media/`. Stream errors no longer leak
@@ -89,26 +110,43 @@ cleanup of 2026-11-06, so there is now a single backend to patch.)
   repo. The server recreates them from its built-in defaults on
   startup, so a fresh clone still starts with the sample library.
 
-## Optional token auth
+## API token auth (automatic)
 
-Set `NASCENT_API_TOKEN` to a long random token. When set, mutating API
-calls (`POST` / `DELETE` under `/api`) and the sensitive GET endpoints
-(`/api/stremio/proxy`, `/api/stream/benchmark`) require
-`Authorization: Bearer <token>` or `x-api-token: <token>`.
+You do not have to set a token yourself. On first run the server
+generates a random 32-byte token, saves it to `data/api-token.txt`
+(mode `0600`, gitignored), and prints it once in the startup log.
+On later runs it reads the same token back from that file, so it
+survives restarts. Set `NASCENT_API_TOKEN` in the environment only to
+override it with a token of your own choosing.
 
-This is opt-in so local use is unchanged. Note that the Svelte UI calls
-the proxy without a token, so enabling the token will break its Stremio
-addon installer until that UI sends the header — use it together with
-reverse-proxy auth, not as a drop-in for the browser UI.
+When a token is in effect, mutating API calls (`POST` / `DELETE` under
+`/api`) and the sensitive GET endpoints (`/api/proxy`,
+`/api/stremio/proxy`, `/api/stream/benchmark`) require
+`Authorization: Bearer <token>` or `x-api-token: <token>`. That means
+the app's write calls (add media, watch parties, metadata enrich)
+will get `401` until the token is entered in the app.
+
+Use `x-api-token` when the built-in gateway is also enabled — browsers
+only send one `Authorization` header (Basic for the gateway).
+
+The browser app never reads this token from a build-time variable:
+do NOT set `VITE_NASCENT_API_TOKEN` — Vite inlines `VITE_*` values into
+the shipped JavaScript bundle, so the token would be readable by anyone
+who can load the app. Instead, paste the token once per browser session
+in Settings → Server & LAN → API Token; it is kept in `sessionStorage`
+for that tab only (`src/lib/apiAuth.ts`). Prefer gateway Basic auth for
+shared remote access; use the API token as a second layer or for scripts.
 
 ## Known limitations (not fixed here)
 
-- **No real authentication or per-user sessions.** The API is open to
+- **No per-user sessions.** Gateway Basic Auth (when enabled) is shared
+  credentials, not accounts. Without the gateway the API is open to
   anyone who can reach the server — that is why localhost binding is
-  the primary control. The watch-party host token is a per-room
-  secret, not a user identity, and the Waku endpoint still accepts
-  messages from anyone (now size-capped and rate-limited). Do not
-  rely on these for access control.
+  the primary control. Watch-party host status is still
+  client-asserted; do not rely on these for access control.
+- **Debrid tokens** are stored in plaintext `localStorage` and the
+  plugin docs suggest putting API keys in addon URLs. Move them to a
+  server-side secret store before entering a real token.
 - **Plugin/addon hosts are trusted once allowlisted.** A malicious
   addon can serve arbitrary stream URLs and metadata to the player.
   Only allowlist hosts you trust.
